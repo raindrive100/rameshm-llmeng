@@ -13,8 +13,8 @@ from typing import Optional
 import re
 
 # import internal packages
-from website import Website
-from create_llm_instance import LLM_Instance
+from rameshm.llmeng.website import Website
+from rameshm.llmeng.create_llm_instance import LLM_Instance
 from rameshm.llmeng.utils import init_utils
 
 """ Initialize the logger and sets environment variables"""
