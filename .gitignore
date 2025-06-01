@@ -1,4 +1,9 @@
 # Byte-compiled / optimized / DLL files
+scratch*.py
+.idea*
+_pycache*
+.env
+
 __pycache__/
 *.py[cod]
 *$py.class
