@@ -29,7 +29,10 @@ class Website:
         if soup.body:
             for irrelevant in soup.body(["script", "style", "img", "input"]):
                 irrelevant.decompose()
-            self.text = soup.body.get_text(separator="\n", strip=True)
+            # Get text and replace whitespace manually
+            text = soup.body.get_text(strip=True)
+            self.text = '\n'.join(line.strip() for line in text.split('\n') if line.strip())
+            #self.text = soup.body.get_text(separator="\n", strip=True)
         else:
             self.text = ""
         links = [link.get('href') for link in soup.find_all('a')]
