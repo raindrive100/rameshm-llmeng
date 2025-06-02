@@ -60,8 +60,8 @@ def get_links_message(website: Website) -> list[dict[str, str]]:
     logger.debug(f"Link System Prompt: {links_message}")
     return links_message
 
-def get_links(website: Website, llm_instance: LLM_Instance) -> str:
-    """ Using LLL returns all relevant links contained in URL used in creating the Website instance. """
+def get_links(website: Website, llm_instance: LLM_Instance) -> dict[str, list[dict[str, str]]]:
+    """ Using LLM returns all relevant links contained in URL used in creating the Website instance. """
     response = llm_instance.get_llm_model_instance().chat.completions.create(
         model = llm_instance.get_llm_model_name(),
         messages = get_links_message(website),
@@ -69,7 +69,7 @@ def get_links(website: Website, llm_instance: LLM_Instance) -> str:
         )
     result = response.choices[0].message.content
     content = json.loads(result)
-    
+    print(f"DEBUG 757dhj content variable in get_links method f of type: {type(content)}\n\n")
     logger.debug(f"get_links Content is: {content}")
     return content
     
@@ -79,11 +79,11 @@ def get_all_linked_details(website: Website, llm_instance: LLM_Instance) -> str:
     all_content += "\nContent from embedded links:\n"
     links = get_links(website, llm_instance)
     for link in links["links"]:
-        all_content += f"\n{link['type']}\n"        
+        all_content += f"\n{link['type']}\n"
+        lnk_url = link.get("url", None)
+        logger.debug(f"Processing Link: {lnk_url}\n")
         try:
                 # Encountering some dummy URLs etc., hence ignoring irrelevant ones
-            lnk_url = link.get("url") # remove spaces in URL
-            logger.debug(f"Processing Link: {lnk_url}\n")
             if lnk_url:
                 lnk_url = re.sub(r" +", "", lnk_url) # remove spaces in URL
             lnk_website = Website(lnk_url)
