@@ -13,7 +13,6 @@ import requests
 #imports my modules and packages
 from rameshm.llmeng.utils import init_utils
 
-
 class Website:
 
     def __init__(self, url):
