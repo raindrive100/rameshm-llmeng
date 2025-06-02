@@ -6,12 +6,13 @@ Created on Tue May 27 11:40:30 2025
 
 HACK(s):
     1. Works only with OPenAI and Llama. Modify to use langchain or add clauses for the code to work with other LLM
-    2. The .env file from which the LLM Connection Key is sourced is set in KEY_FILE environement variable. Modify to read as argument.
+    2. The .env file from which the LLM Connection Key is sourced is set in KEY_FILE environment variable. Modify to read as argument.
     
 """
 
 # imports external and system packages
-from rich.console import Console
+#from rich.console import Console
+#from IPython.display import Markdown #, display, update_display
 
 # import internal packages
 from rameshm.llmeng.website import Website
@@ -58,7 +59,7 @@ def summarize_site(url: str, llm_model_nm: str) -> str:
     return response.choices[0].message.content
 
 def create_summary(url: str, llm_model_nm: str) -> str:
-    console = Console()
+    #console = Console()
     summary = summarize_site(url,llm_model_nm)
     logger.debug(f"Website Summary for URL: {url} Summary: {summary}")
     #console.print(Markdown(summary))
@@ -68,6 +69,7 @@ def usage(url: str, llm_model_nm: str):
     """Print usage instructions."""
     print("Usage: python llm_website_summary.py <website URL> [LLM Model Name]")
     print("Example: python llm_website_summary.py https://example.com gpt-4o-mini")
+    print(f"Values supplied are: URL: {url} LLM Model Name: {llm_model_nm}")
 
 def main():
     """Main function to run the LLM Web Scraper """
