@@ -44,6 +44,8 @@ dependencies:
     - langchain-openai
     - langchain-chroma
     - langchain-community
+    - langchain_anthropic
+    - langchain_google_genai
     - faiss-cpu
     - feedparser
     - twilio
