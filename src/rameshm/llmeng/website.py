@@ -43,7 +43,7 @@ class Website:
 
 def main():
     """Main function to demonstrate the Website class."""
-    logger = init_utils.get_initialized_logger()
+    logger = init_utils.set_environment_logger()
     url = "https://huggingface.co"
     website = Website(url)
     logger.info(f"Website URL: {website.url} with Title: {website.title}")

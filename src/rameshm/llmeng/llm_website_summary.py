@@ -20,7 +20,7 @@ from rameshm.llmeng.create_llm_instance import LLM_Instance
 from rameshm.llmeng.utils import init_utils
 
 # Initialize the logger and sets environment variables
-logger = init_utils.get_initialized_logger()
+logger = init_utils.set_environment_logger()
  
 def get_system_prompt() -> str:
     system_prompt = (   "You are an assistant that analyzes the contents of a website and provides a short summary,"

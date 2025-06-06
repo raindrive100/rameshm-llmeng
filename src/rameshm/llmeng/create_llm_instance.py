@@ -18,7 +18,7 @@ class LLM_Instance:
     
     def __init__(self, llm_model_nm: str):
         self.llm_model_nm = llm_model_nm
-        self.logger = init_utils.get_initialized_logger()
+        self.logger = init_utils.set_environment_logger()
         self.llm_model_instance = self.__create_llm_model_instance()
 
     def __create_llm_model_instance(self):
@@ -95,7 +95,7 @@ if __name__ == "__main__":
            raise Exception(f"LLM Model: {llm_model_nm} is not yet supported")
 
     """
-    logger = init_utils.get_initialized_logger()
+    logger = init_utils.set_environment_logger()
     print(f"Google API Key: {os.getenv('GOOGLE_API_KEY')}")
     client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
     print(f"My Google Client is: {client}")
