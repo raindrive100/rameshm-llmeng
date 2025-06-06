@@ -92,6 +92,11 @@ with gr.Blocks() as demo_blocks_list:
         outputs=[food_box, status_box]
     )
 
+# Example 5. To Launch the Gradio Chat Interface
+def llm_chat_example():
+    gr.load_chat("http://localhost:11434/v1/", model="llama3.2", token="ollama").launch()
+    gr.load_chat("http://localhost:11434/v1/", model="gemma3:1b", token="ollama").launch()
+
 def main(function_name: str):
     if function_name == "greet":
         demo_greet.launch()
@@ -103,6 +108,8 @@ def main(function_name: str):
         demo_greet_block.launch()
     elif function_name == "blocks_list":
         demo_blocks_list.launch()
+    elif function_name == "llm_chat":
+        llm_chat_example()
 
 if __name__ == "__main__":
     import sys
