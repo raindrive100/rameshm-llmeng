@@ -18,7 +18,6 @@ from sympy import false
 import random
 
 from rameshm.llmeng.llmchat.llm_chat import LlmChat
-from rameshm.llmeng.multi_model_chat import chat_history
 from rameshm.llmeng.utils.init_utils import set_environment_logger
 
 logger = set_environment_logger()
@@ -124,10 +123,10 @@ def create_update_chat_in_storage(current_chat_id: Optional[str], updated_histor
     if not current_chat_id:
         current_chat_id = generate_chat_id()
         current_llm_chat = LlmChat(chat_id=current_chat_id, history=updated_history)
-        chat_list += [{"chat_id": current_chat_id, "llm_chat": current_llm_chat}]
+        chat_list += [{current_chat_id: current_llm_chat}]
     else:
         # Update current with updated chat
-        current_llm_chat = next((chat['llm_chat'] for chat in chat_list if chat['chat_id'] == current_chat_id), None)
+        current_llm_chat = next((chat_dict[current_chat_id] for chat_dict in chat_list if current_chat_id in chat_list), None)
         current_llm_chat.update_chat_history(updated_history)
     return current_chat_id, chat_list
 
@@ -137,12 +136,12 @@ def get_chat_nm_list(chat_list: List[Dict[str, LlmChat]]) -> List[tuple[str, str
             for chat in chat_list
             for chat_id, llm_chat in chat.items()]
 
+
 def predict(message: str, history: List, selected_model: str, system_message: str,
-            current_chat_id: Optional[str], chat_list: List[Dict[str, LlmChat]]) -> Tuple[str, List, List, str, List]:
+            current_chat_id: Optional[str], chat_list: List[Dict[str, LlmChat]]) -> Tuple[str, List, List, str, List, List]:
     """Enhanced predict function with chat management"""
     start_time = time.time()
     chat_list_updated = chat_list
-    err_msg = None  # set to string if we encounter an error
 
     try:
         # Validate inputs
@@ -187,7 +186,7 @@ def predict(message: str, history: List, selected_model: str, system_message: st
         chat_id, chat_list_updated = create_update_chat_in_storage(current_chat_id, updated_history, chat_list)
 
         logger.debug(f"💬 Response: {response_content[:200]}{'...' if len(response_content) > 200 else ''}")
-        return "", updated_history, updated_history, current_chat_id, get_chat_nm_list(chat_list_updated),
+        return "", updated_history, updated_history, current_chat_id, chat_list_updated, get_chat_nm_list(chat_list_updated),
     except Exception as e:
         elapsed = time.time() - start_time
         logger.error(f"Unexpected error after {elapsed:.2f}s: {e}")
@@ -196,24 +195,23 @@ def predict(message: str, history: List, selected_model: str, system_message: st
             {"role": "assistant", "content": f"🔥 ERROR Exception: Unexpected error: {str(e)}"}
         ]
         updated_history = history + error_response
-        return "", updated_history, updated_history, current_chat_id or "", get_chat_nm_list(chat_list_updated),
+        return "", updated_history, updated_history, current_chat_id or "", chat_list_updated, get_chat_nm_list(chat_list_updated),
+
 
 def start_new_chat():
     """Start a new chat"""
-    global CURRENT_CHAT_ID
-    CURRENT_CHAT_ID = None
     logger.info("Started new chat")
-    return [], "", "", None, get_chat_list()
+    return [], "", "", None, "",
 
-def load_selected_chat(chat_id: str):
+def load_selected_chat(chat_id: str, chat_list: List[Dict[str, LlmChat]]) -> Tuple[List, List, str, str, str]:
     """Load selected chat from the list"""
-    global CURRENT_CHAT_ID
-    if chat_id and chat_id in CHAT_STORAGE:
-        CURRENT_CHAT_ID = chat_id
-        history, model, system_message = load_chat(chat_id)
-        logger.info(f"Loaded chat: {chat_id}")
-        return history, history, model, system_message, chat_id
-    return [], [], "", "", None
+    llm_chat = next((chat_dict[chat_id] for chat_dict in chat_list if chat_id in chat_list), None)
+    history = llm_chat.get_history()
+    model = llm_chat.get_model_nm()
+    system_message = llm_chat.system_message
+    logger.info(f"Loaded chat: {chat_id} with model: {model}")
+    return history, history, model, system_message, chat_id
+
 
 def delete_selected_chat(chat_id: str):
     """Delete selected chat"""
@@ -227,12 +225,12 @@ def delete_selected_chat(chat_id: str):
     return [], "", "", chat_id, get_chat_list()
 
 
-
 # Enhanced UI with chat management
 with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model_chat:
     # State variables for chat management
     current_chat_id = gr.State(None)
-    chat_list = gr.State([])    # Store chat list as an array of dictonaries with key as chat_id and value as llm_chat
+    chat_list = gr.State([])    # Store chat list as an array of dictionaries with key as chat_id and value as llm_chat
+    chat_history = gr.State([]) # Store chat history as an array of dictionaries with role and content
 
     gr.Markdown("""
     # 🧠 Multi-LLM Chatbot with Chat Management
@@ -338,9 +336,6 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
                         size="sm"
                     )
 
-    # Store conversation history
-    chat_history = gr.State([])
-
     # Event handlers for chat management
     new_chat_btn.click(
         fn=start_new_chat,
@@ -389,8 +384,8 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
     # Main prediction handlers with file upload support
     user_input.submit(
         fn=lambda msg, hist, model, sys_msg, chat_id, file_data: predict(msg, hist, model, sys_msg, chat_id, file_data),
-        inputs=[user_input, chat_history, model_selector, system_message, current_chat_id, uploaded_file_data],
-        outputs=[user_input, chat_history, chatbot, current_chat_id, chat_selector]
+        inputs=[user_input, chat_history, model_selector, system_message, current_chat_id, chat_list, uploaded_file_data],
+        outputs=[user_input, chat_history, chatbot, current_chat_id, chat_list, chat_selector]
     ).then(
         lambda: None,  # Clear uploaded file data after sending
         outputs=[uploaded_file_data]
