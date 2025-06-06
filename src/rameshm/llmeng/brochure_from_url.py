@@ -18,7 +18,7 @@ from rameshm.llmeng.create_llm_instance import LLM_Instance
 from rameshm.llmeng.utils import init_utils
 
 """ Initialize the logger and sets environment variables"""
-logger = init_utils.get_initialized_logger()
+logger = init_utils.set_environment_logger()
 
 def get_links_system_prompt() -> str:
     """ Returns System Prompt for getting all links within a URL. """
