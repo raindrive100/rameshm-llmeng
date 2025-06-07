@@ -131,11 +131,10 @@ def create_update_chat_in_storage(current_chat_id: Optional[str], updated_histor
     return current_chat_id, chat_list
 
 def get_chat_nm_list(chat_list: List[Dict[str, LlmChat]]) -> List[tuple[str, str]]:
-    """ Get list of Chat Names and ChatId"""
+    """ Get list of Chat Names and ChatId. Reverse order to show latest chats first"""
     return [(llm_chat.get_chat_title(), llm_chat.get_chat_id())
             for chat in chat_list
-            for chat_id, llm_chat in chat.items()]
-
+            for chat_id, llm_chat in chat.items()][::-1]  # Reverse order to show latest chats first
 
 def predict(message: str, history: List, selected_model: str, system_message: str,
             current_chat_id: Optional[str], chat_list: List[Dict[str, LlmChat]]) -> Tuple[str, List, List, str, List, List]:
@@ -203,6 +202,7 @@ def start_new_chat():
     logger.info("Started new chat")
     return [], "", "", None, "",
 
+
 def load_selected_chat(chat_id: str, chat_list: List[Dict[str, LlmChat]]) -> Tuple[List, List, str, str, str]:
     """Load selected chat from the list"""
     llm_chat = next((chat_dict[chat_id] for chat_dict in chat_list if chat_id in chat_list), None)
@@ -213,16 +213,14 @@ def load_selected_chat(chat_id: str, chat_list: List[Dict[str, LlmChat]]) -> Tup
     return history, history, model, system_message, chat_id
 
 
-def delete_selected_chat(chat_id: str):
+
+#TODO: It is cleaning out the chat history etc., even when the chat being deleted is not the current chat. Fix this so that
+# it deletes the chat from the list only if we are deleting the current chat.
+# Also a good idea to have a confirmation dialog before deleting the chat.
+def delete_selected_chat(chat_id: str, chat_list: List[Dict[str, LlmChat]]) -> Tuple[List, str, str, Optional[str], List[tuple[str, str]]]:
     """Delete selected chat"""
-    global CURRENT_CHAT_ID
-    if chat_id and chat_id in CHAT_STORAGE:
-        delete_chat(chat_id)
-        if CURRENT_CHAT_ID == chat_id:
-            CURRENT_CHAT_ID = None
-        logger.info(f"Deleted chat: {chat_id}")
-        return [], "", "", None, get_chat_list()
-    return [], "", "", chat_id, get_chat_list()
+    chat_list = [chat_dict for chat_dict in chat_list if chat_id not in chat_dict]
+    return [], "", "", "", get_chat_nm_list(chat_list)
 
 
 # Enhanced UI with chat management
@@ -350,7 +348,7 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
 
     delete_chat_btn.click(
         fn=delete_selected_chat,
-        inputs=[chat_selector],
+        inputs=[chat_selector,chat_list],
         outputs=[chatbot, user_input, system_message, current_chat_id, chat_selector]
     )
 
