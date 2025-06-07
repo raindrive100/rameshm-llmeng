@@ -203,14 +203,15 @@ def start_new_chat():
     return [], "", "", None, "",
 
 
-def load_selected_chat(chat_id: str, chat_list: List[Dict[str, LlmChat]]) -> Tuple[List, List, str, str, str]:
+def load_selected_chat(chat_id: str, chat_list: List[Dict[str, LlmChat]]) -> Tuple[List, List, str, str, str, str]:
     """Load selected chat from the list"""
     llm_chat = next((chat_dict[chat_id] for chat_dict in chat_list if chat_id in chat_list), None)
     history = llm_chat.get_history()
     model = llm_chat.get_model_nm()
     system_message = llm_chat.system_message
+    user_input = ""
     logger.info(f"Loaded chat: {chat_id} with model: {model}")
-    return history, history, model, system_message, chat_id
+    return history, history, user_input, model, system_message, chat_id
 
 
 
@@ -342,8 +343,8 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
 
     chat_selector.change(
         fn=load_selected_chat,
-        inputs=[chat_selector],
-        outputs=[chat_history, chatbot, model_selector, system_message, current_chat_id]
+        inputs=[chat_selector, chat_list],
+        outputs=[chat_history, chatbot, user_input, model_selector, system_message, current_chat_id]
     )
 
     delete_chat_btn.click(
