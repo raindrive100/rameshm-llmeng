@@ -1,3 +1,4 @@
+import mimetypes
 import os
 import base64
 import chardet
@@ -56,22 +57,25 @@ class FileToLLMConverter:
                        '.cfg', '.conf', '.sh', '.bat', '.ps1', '.php', '.rb',
                        '.go', '.rs', '.cpp', '.c', '.h', '.java', '.kt', '.swift'}
 
-    IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.svg'}
+    BINARY_EXTENSIONS_SMALL = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.svg',
+                         '.pdf', '.docx', '.xlsx', }
 
-    BINARY_EXTENSIONS = {'.pdf', '.docx', '.xlsx', '.zip', '.tar', '.gz', '.exe',
+    BINARY_EXTENSIONS_LARGE = {'.zip', '.tar', '.gz', '.exe',
                          '.dll', '.so', '.dylib', '.mp3', '.mp4', '.avi', '.mov'}
 
-    def __init__(self, max_text_size: int = 1_000_000, max_non_text_size: int = 20_000_000):
+    def __init__(self, max_text_size: int = 1_000_000, max_small_binary_size: int = 10_000_000
+                 , max_large_binary_size: int = 20_000_000):
         """
         Initialize converter with size limits.
 
         Args:
             max_text_size: Maximum size for text files (1MB default)
-            max_non_text_size: Maximum size for image and binary files (20MB default)
+            max_small_binary_size: Maximum size for image and binary files (20MB default)
         """
         self.logger = set_environment_logger()
         self.max_text_size = max_text_size
-        self.max_non_text_size = max_non_text_size
+        self.max_small_binary_size = max_small_binary_size
+        self.max_large_binary_size = max_large_binary_size
 
 
     def get_file_info(self, file_path: str) -> Dict[str, Any]:
@@ -118,15 +122,18 @@ class FileToLLMConverter:
         file_info = self.get_file_info(file_path)
         if file_info['size_bytes'] <= 0:
             err_msg = f"File is empty: {file_path}"
+        file_extension = file_info['extension']
+        file_type_supported = any(file_extension in arr for arr in (self.TEXT_EXTENSIONS, self.BINARY_EXTENSIONS_SMALL, self.BINARY_EXTENSIONS_LARGE))
 
-        if file_info['extension'].lower() not in zip(self.TEXT_EXTENSIONS, self.IMAGE_EXTENSIONS, self.BINARY_EXTENSIONS):
+        print(f"*****DEBUG: File Extension Supported: {file_type_supported}")
+        if not file_type_supported:
             err_msg = f"Unsupported file type: {file_info['extension']} for file {file_path}"
         elif file_info['extension'].lower() in self.TEXT_EXTENSIONS and file_info['size_bytes'] > self.max_text_size:
             err_msg = f"Text file too large: {file_info['size_mb']}MB (max: {self.max_text_size / (1024 * 1024)}MB)"
-        elif file_info['extension'].lower() in self.IMAGE_EXTENSIONS and file_info['size_bytes'] > self.max_non_text_size:
-            err_msg = f"Image file too large: {file_info['size_mb']}MB (max: {self.max_non_text_size / (1024 * 1024)}MB)"
-        elif file_info['extension'].lower() in self.BINARY_EXTENSIONS and file_info['size_bytes'] > self.max_non_text_size:
-            err_msg = f"Binary file too large: {file_info['size_mb']}MB (max: {self.max_non_text_size / (1024 * 1024)}MB)"
+        elif file_info['extension'].lower() in self.BINARY_EXTENSIONS_SMALL and file_info['size_bytes'] > self.max_small_binary_size:
+            err_msg = f"Image file too large: {file_info['size_mb']}MB (max: {self.max_small_binary_size / (1024 * 1024)}MB)"
+        elif file_info['extension'].lower() in self.BINARY_EXTENSIONS_LARGE and file_info['size_bytes'] > self.max_large_binary_size:
+            err_msg = f"Binary file too large: {file_info['size_mb']}MB (max: {self.max_large_binary_size / (1024 * 1024)}MB)"
 
         if err_msg:
             self.logger.error(err_msg)
@@ -214,9 +221,8 @@ class FileToLLMConverter:
             raise LlmChatException(err_msg)
 
         file_info = self.get_file_info(file_path)
-
-        # Detect encoding
         encoding = self.detect_encoding(file_path)
+        mime_type = mimetypes.guess_type(file_path)[0]
 
         try:
             with open(file_path, 'r', encoding=encoding) as f:  # Opening file with detected encoding, hence only "r" and not "rb"
@@ -224,8 +230,10 @@ class FileToLLMConverter:
 
             metadata = {
                 "type": "text",
+                'mime_type': mime_type,
                 "encoding": encoding,
-                "char_count": len(content),
+                "content_length": len(content),
+                #"char_count": len(content),
                 "line_count": content.count('\n') + 1,
                 "success": True,
                 **file_info
@@ -255,9 +263,50 @@ class FileToLLMConverter:
             '.webp': 'image/webp',
             '.tiff': 'image/tiff',
             '.svg': 'image/svg+xml',
+            '.pdf': 'application/pdf',
+            '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            '.zip': 'application/zip',
+            '.tar': 'application/x-tar',
+            '.gz': 'application/gzip',
+            '.exe': 'application/vnd.microsoft.portable-executable',
+            '.dll': 'application/vnd.microsoft.portable-executable',
+            '.so': 'application/x-sharedlib',
+            '.dylib': 'application/x-dylib',
+            '.mp3': 'audio/mpeg',
+            '.mp4': 'video/mp4',
+            '.avi': 'video/x-msvideo',
+            '.mov': 'video/quicktime',
+            '.json': 'application/json',
+            '.csv': 'text/csv',
+            '.txt': 'text/plain',
+            '.md': 'text/markdown',
+            '.py': 'text/x-python',
+            '.js': 'text/javascript',
+            '.html': 'text/html',
+            '.css': 'text/css',
+            '.xml': 'application/xml',
+            '.yml': 'application/x-yaml',
+            '.yaml': 'application/x-yaml',
+            '.sql': 'application/sql',
+            '.log': 'text/plain',
+            '.ini': 'text/plain',
+            '.cfg': 'text/plain',
+            '.conf': 'text/plain',
+            '.sh': 'application/x-sh',
+            '.bat': 'application/x-msdownload',
+            '.ps1': 'application/powershell',
+            '.php': 'application/x-httpd-php',
+            '.rb': 'application/x-ruby',
+            '.go': 'text/x-go',
+            '.rs': 'text/x-rust',
+            '.cpp': 'text/x-c++src',
+            '.c': 'text/x-csrc',
+            '.h': 'text/x-chdr',
+            '.java': 'text/x-java-source',
             # Add more as needed
         }
-        return mime_types.get(extension, 'image/jpeg')  # Default to JPEG if unknown
+        return mime_types.get(extension, "")  # Default to empty string if unknown extension
 
     def _encode_file_to_base64(self, file_path: str, max_size: Optional[int] = None) -> Tuple[str, Dict[str, Any]]:
         """Encode file to base64 string with metadata.
@@ -274,6 +323,7 @@ class FileToLLMConverter:
             base64_string = base64.b64encode(binary_data).decode('utf-8')
 
             metadata = {
+                "content_length": len(base64_string),
                 "base64_length": len(base64_string),
                 "success": True,
                 **file_info
@@ -288,26 +338,29 @@ class FileToLLMConverter:
     def convert_to_base64(self, file_path: str, file_type: str) -> Tuple[str, Dict[str, Any]]:
         """Universal base64 converter"""
         # Common encoding logic
-        base64_string, file_info = self._encode_file_to_base64(
-            file_path,
-            self.max_non_text_size if file_type in ["image", "binary"] else self.max_text_size
-        )
+        try:
+            base64_string, metadata = self._encode_file_to_base64(
+                file_path,
+                self.max_small_binary_size if file_type in ["image", "binary"] else self.max_text_size
+            )
+            file_info = self.get_file_info(file_path)
+            mime_type = mime_type = mimetypes.guess_type(file_path)[0]
+            if not base64_string:
+                return "", file_info    # File could be empty or not readable
 
-        if not base64_string:
-            return "", file_info    # File could be empty or not readable
-
-        file_info = self.get_file_info(file_path)
-
-        # Type-specific formatting
-        if file_type == "image":
-            mime_type = self._get_mime_type(file_info['extension'])
-            result = f"data:{mime_type};base64,{base64_string}"
-            metadata = {"type": "image", "mime_type": mime_type, **file_info}
-        else:
-            result = base64_string
-            metadata = {"type": "binary", "note": "Binary file...", **file_info}
-
-        return result, metadata
+            # TODO: Need to handle different file types differently
+            if file_type == "image":
+                mime_type = self._get_mime_type(file_info['extension'])
+                result = f"data:{mime_type};base64,{base64_string}"
+                metadata['type'] = 'image'
+                metadata['mime_type'] = mime_type
+            else:
+                result = base64_string
+                metadata = {"type": "binary", "note": "Binary file...", **file_info}
+            return result, metadata
+        except Exception as e:
+            err_msg = f"Failed to convert file {file_path} to base64: {e}"
+            raise LlmChatException(err_msg) from e
 
 
     def convert_image_file(self, file_path: str) -> Tuple[str, Dict[str, Any]]:
@@ -319,8 +372,8 @@ class FileToLLMConverter:
         """
         file_info = self.get_file_info(file_path)
 
-        if file_info['size_bytes'] > self.max_non_text_size:
-            err_msg = f"Image too large: {file_info['size_mb']}MB (max: {self.max_non_text_size / (1024 * 1024)}MB)"
+        if file_info['size_bytes'] > self.max_small_binary_size:
+            err_msg = f"Image too large: {file_info['size_mb']}MB (max: {self.max_small_binary_size / (1024 * 1024)}MB)"
             self.logger.error(err_msg)
             raise LlmChatException(err_msg)
             # return "", {
@@ -386,7 +439,7 @@ class FileToLLMConverter:
 
         if file_ext in self.TEXT_EXTENSIONS:
             return self.convert_text_file(file_path)
-        elif file_ext in self.IMAGE_EXTENSIONS or file_ext in self.BINARY_EXTENSIONS:
+        elif file_ext in self.BINARY_EXTENSIONS_SMALL or file_ext in self.BINARY_EXTENSIONS_LARGE:
             return self.convert_to_base64(file_path, file_ext)
         else:
             # Unknown extension - try as text first
@@ -452,10 +505,10 @@ def main():
 
     # Test with different file types
     test_files = [
-        "example.txt",
-        "image.jpg",
-        "data.csv",
-        "script.py"
+        r"c:/temp/test.txt",
+        r"c:\temp\test.jpg"
+        #"data.csv",
+        #"script.py"
     ]
 
     for file_path in test_files:
