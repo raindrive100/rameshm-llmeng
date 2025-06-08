@@ -5,6 +5,9 @@ import chardet
 from pathlib import Path
 from typing import Tuple, Optional, Dict, Any
 import json
+
+from gradio.external import TEXT_FILE_EXTENSIONS
+
 from rameshm.llmeng.exception.llm_chat_exception import LlmChatException
 from rameshm.llmeng.utils.init_utils import set_environment_logger
 
@@ -52,12 +55,17 @@ class FileToLLMConverter:
 
     # Supported file types
     #TODO: Add more file types as needed. Look to move these to a config file
-    TEXT_EXTENSIONS = {'.txt', '.md', '.py', '.js', '.html', '.css', '.json',
-                       '.csv', '.xml', '.yml', '.yaml', '.sql', '.log', '.ini',
-                       '.cfg', '.conf', '.sh', '.bat', '.ps1', '.php', '.rb',
-                       '.go', '.rs', '.cpp', '.c', '.h', '.java', '.kt', '.swift'}
+    TEXT_FILE_EXTENSIONS = ['.txt', '.md', '.py', '.js', '.html', '.css', '.json',
+                            '.csv', '.xml', '.yml', '.yaml', '.sql', '.log', '.ini',
+                            '.cfg', '.conf', '.sh', '.bat', '.ps1', '.php', '.rb',
+                            '.go', '.rs', '.cpp', '.c', '.h', '.java', '.kt', '.swift']
 
-    BINARY_EXTENSIONS_SMALL = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.svg',
+    SUPPORTED_FILE_TYPES = {
+        "text": TEXT_FILE_EXTENSIONS,
+        "image": ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.svg'],
+        "binary": ['.pdf']
+    }
+    BINARY_EXTENSION = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.svg', # Image
                          '.pdf', '.docx', '.xlsx', }
 
     BINARY_EXTENSIONS_LARGE = {'.zip', '.tar', '.gz', '.exe',
@@ -100,7 +108,7 @@ class FileToLLMConverter:
             # }
 
 
-    def file_checks(self, file_path: str) -> (bool,str):
+    def file_checks(self, file_path: str) -> (bool,str, bool):
         """
         Perform basic checks on the file.
 
@@ -108,7 +116,9 @@ class FileToLLMConverter:
             file_path: Absolute path to the file
 
         Returns:
-            True if file passes checks, False otherwise
+            True if file passes checks, False otherwise.
+            Error message if checks fail, None if checks pass.
+            True if it's a fatal error, False otherwise.
         """
         if not os.path.exists(file_path):
             err_msg = f"File not found: {file_path}"
@@ -119,28 +129,31 @@ class FileToLLMConverter:
             raise LlmChatException(f"{err_msg}")
 
         err_msg = None
+        fatal_error = False
         file_info = self.get_file_info(file_path)
         if file_info['size_bytes'] <= 0:
             err_msg = f"File is empty: {file_path}"
         file_extension = file_info['extension']
-        file_type_supported = any(file_extension in arr for arr in (self.TEXT_EXTENSIONS, self.BINARY_EXTENSIONS_SMALL, self.BINARY_EXTENSIONS_LARGE))
 
-        print(f"*****DEBUG: File Extension Supported: {file_type_supported}")
+        file_type_supported = file_extension in [item for sublist in self.SUPPORTED_FILE_TYPES.values() for item in sublist]
+
+        print(f"*****DEBUG: File Extension Is Supported: {file_type_supported}")
         if not file_type_supported:
             err_msg = f"Unsupported file type: {file_info['extension']} for file {file_path}"
-        elif file_info['extension'].lower() in self.TEXT_EXTENSIONS and file_info['size_bytes'] > self.max_text_size:
+            fatal_error = True
+        elif file_info['extension'].lower() in self.SUPPORTED_FILE_TYPES['text'] and file_info['size_bytes'] > self.max_text_size:
             err_msg = f"Text file too large: {file_info['size_mb']}MB (max: {self.max_text_size / (1024 * 1024)}MB)"
-        elif file_info['extension'].lower() in self.BINARY_EXTENSIONS_SMALL and file_info['size_bytes'] > self.max_small_binary_size:
+            fatal_error = True
+        elif file_info['extension'].lower() in self.SUPPORTED_FILE_TYPES['binary'] and file_info['size_bytes'] > self.max_small_binary_size:
             err_msg = f"Image file too large: {file_info['size_mb']}MB (max: {self.max_small_binary_size / (1024 * 1024)}MB)"
-        elif file_info['extension'].lower() in self.BINARY_EXTENSIONS_LARGE and file_info['size_bytes'] > self.max_large_binary_size:
-            err_msg = f"Binary file too large: {file_info['size_mb']}MB (max: {self.max_large_binary_size / (1024 * 1024)}MB)"
+            fatal_error = True
 
-        if err_msg:
-            self.logger.error(err_msg)
-            return False, err_msg
-        else:
+        if not err_msg and not fatal_error:
             self.logger.info(f"File checks passed for {file_path}: {file_info}")
-            return True, None
+            return True, None, False
+        else:
+            # For now raising exception for any file check errors. Later we can handle this more gracefully
+            raise LlmChatException(err_msg)
 
 
     def detect_encoding(self, file_path: str, sample_size: int = 8192) -> str:
@@ -205,7 +218,6 @@ class FileToLLMConverter:
         except Exception as e:
             # TODO: Consider if we should use 'utf-8' or 'latin-1' as the final fallback or raise exception?
             err_msg = f"Encoding detection error for file {file_path}: {e}."
-            self.logger.error(err_msg)
             raise LlmChatException(err_msg) from e
             #return 'utf-8'
 
@@ -216,7 +228,7 @@ class FileToLLMConverter:
         Returns:
             Tuple of (content, metadata)
         """
-        file_check_result, err_msg = self.file_checks(file_path)
+        file_check_result, err_msg, fatal_error = self.file_checks(file_path)
         if not file_check_result:
             raise LlmChatException(err_msg)
 
@@ -251,68 +263,11 @@ class FileToLLMConverter:
             # }
 
 
-    # TODO: Consider moving the MIME type mapping to a config file or constants module
-    def _get_mime_type(self, extension: str) -> str:
-        """Get MIME type based on file extension."""
-        mime_types = {
-            '.png': 'image/png',
-            '.jpg': 'image/jpeg',
-            '.jpeg': 'image/jpeg',
-            '.gif': 'image/gif',
-            '.bmp': 'image/bmp',
-            '.webp': 'image/webp',
-            '.tiff': 'image/tiff',
-            '.svg': 'image/svg+xml',
-            '.pdf': 'application/pdf',
-            '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            '.zip': 'application/zip',
-            '.tar': 'application/x-tar',
-            '.gz': 'application/gzip',
-            '.exe': 'application/vnd.microsoft.portable-executable',
-            '.dll': 'application/vnd.microsoft.portable-executable',
-            '.so': 'application/x-sharedlib',
-            '.dylib': 'application/x-dylib',
-            '.mp3': 'audio/mpeg',
-            '.mp4': 'video/mp4',
-            '.avi': 'video/x-msvideo',
-            '.mov': 'video/quicktime',
-            '.json': 'application/json',
-            '.csv': 'text/csv',
-            '.txt': 'text/plain',
-            '.md': 'text/markdown',
-            '.py': 'text/x-python',
-            '.js': 'text/javascript',
-            '.html': 'text/html',
-            '.css': 'text/css',
-            '.xml': 'application/xml',
-            '.yml': 'application/x-yaml',
-            '.yaml': 'application/x-yaml',
-            '.sql': 'application/sql',
-            '.log': 'text/plain',
-            '.ini': 'text/plain',
-            '.cfg': 'text/plain',
-            '.conf': 'text/plain',
-            '.sh': 'application/x-sh',
-            '.bat': 'application/x-msdownload',
-            '.ps1': 'application/powershell',
-            '.php': 'application/x-httpd-php',
-            '.rb': 'application/x-ruby',
-            '.go': 'text/x-go',
-            '.rs': 'text/x-rust',
-            '.cpp': 'text/x-c++src',
-            '.c': 'text/x-csrc',
-            '.h': 'text/x-chdr',
-            '.java': 'text/x-java-source',
-            # Add more as needed
-        }
-        return mime_types.get(extension, "")  # Default to empty string if unknown extension
-
     def _encode_file_to_base64(self, file_path: str, max_size: Optional[int] = None) -> Tuple[str, Dict[str, Any]]:
         """Encode file to base64 string with metadata.
         """
         # Perform file checks
-        file_check_result, err_msg = self.file_checks(file_path)
+        file_check_result, err_msg, fatal_error = self.file_checks(file_path)
         if not file_check_result:
             raise LlmChatException(err_msg)
         file_info = self.get_file_info(file_path)
@@ -341,85 +296,33 @@ class FileToLLMConverter:
         try:
             base64_string, metadata = self._encode_file_to_base64(
                 file_path,
-                self.max_small_binary_size if file_type in ["image", "binary"] else self.max_text_size
+                self.max_small_binary_size
             )
-            file_info = self.get_file_info(file_path)
-            mime_type = mime_type = mimetypes.guess_type(file_path)[0]
-            if not base64_string:
-                return "", file_info    # File could be empty or not readable
 
-            # TODO: Need to handle different file types differently
-            if file_type == "image":
-                mime_type = self._get_mime_type(file_info['extension'])
-                result = f"data:{mime_type};base64,{base64_string}"
-                metadata['type'] = 'image'
-                metadata['mime_type'] = mime_type
-            else:
-                result = base64_string
-                metadata = {"type": "binary", "note": "Binary file...", **file_info}
-            return result, metadata
+            mime_type = mimetypes.guess_type(file_path)[0]
+            metadata['type'] = file_type
+            metadata['mime_type'] = mime_type
+
+            return base64_string, metadata
+            # file_info = self.get_file_info(file_path)
+            # mime_type = mimetypes.guess_type(file_path)[0]
+            # if not base64_string:
+            #     return "", file_info    # File could be empty or not readable
+            #
+            # # TODO: Need to handle different file types differently
+            # return result, metadata
+            # if file_type == "image":
+            #     result = f"data:{mime_type};base64,{base64_string}"
+            #     metadata['type'] = 'image'
+            #     metadata['mime_type'] = mime_type
+            # else:
+            #     result = base64_string
+            #     metadata = {"type": "binary", "mime_type": mime_type, "note": "Binary file...", **file_info}
+            # return result, metadata
         except Exception as e:
             err_msg = f"Failed to convert file {file_path} to base64: {e}"
             raise LlmChatException(err_msg) from e
 
-
-    def convert_image_file(self, file_path: str) -> Tuple[str, Dict[str, Any]]:
-        """
-        Convert image file to base64 format for LLMs.
-
-        Returns:
-            Tuple of (base64_string, metadata)
-        """
-        file_info = self.get_file_info(file_path)
-
-        if file_info['size_bytes'] > self.max_small_binary_size:
-            err_msg = f"Image too large: {file_info['size_mb']}MB (max: {self.max_small_binary_size / (1024 * 1024)}MB)"
-            self.logger.error(err_msg)
-            raise LlmChatException(err_msg)
-            # return "", {
-            #     "error": f"Image too large: {file_info['size_mb']}MB (max: {self.max_non_text_size / (1024 * 1024)}MB)",
-            #     **file_info
-            # }
-
-        # MIME type mapping
-        mime_types = {
-            '.png': 'image/png',
-            '.jpg': 'image/jpeg',
-            '.jpeg': 'image/jpeg',
-            '.gif': 'image/gif',
-            '.bmp': 'image/bmp',
-            '.webp': 'image/webp',
-            '.tiff': 'image/tiff',
-            '.svg': 'image/svg+xml'
-        }
-
-        mime_type = mime_types.get(file_info['extension'], 'image/jpeg')
-
-        try:
-            with open(file_path, 'rb') as f:
-                binary_data = f.read()
-
-            base64_string = base64.b64encode(binary_data).decode('utf-8')
-
-            # Create data URL format for LLMs
-            data_url = f"data:{mime_type};base64,{base64_string}"
-
-            metadata = {
-                "type": "image",
-                "mime_type": mime_type,
-                "base64_length": len(base64_string),
-                "data_url_length": len(data_url),
-                "success": True,
-                **file_info
-            }
-
-            return data_url, metadata
-
-        except Exception as e:
-            return "", {
-                "error": f"Failed to encode image: {e}",
-                **file_info
-            }
 
     def convert_file(self, file_path: str) -> Tuple[str, Dict[str, Any]]:
         """
@@ -437,17 +340,18 @@ class FileToLLMConverter:
 
         file_ext = Path(file_path).suffix.lower()
 
-        if file_ext in self.TEXT_EXTENSIONS:
+        if file_ext in self.SUPPORTED_FILE_TYPES['text']:
             return self.convert_text_file(file_path)
-        elif file_ext in self.BINARY_EXTENSIONS_SMALL or file_ext in self.BINARY_EXTENSIONS_LARGE:
-            return self.convert_to_base64(file_path, file_ext)
+        elif file_ext in self.SUPPORTED_FILE_TYPES['image']:
+            return self.convert_to_base64(file_path, 'image')
+        elif file_ext in self.SUPPORTED_FILE_TYPES['binary']:
+            return self.convert_to_base64(file_path, 'binary')
         else:
-            # Unknown extension - try as text first
             err_msg = f"Unsupported file extension: {file_ext} in file {file_path}"
             raise LlmChatException(err_msg)
 
 
-    def format_for_llm(self, file_path: str, include_metadata: bool = True) -> str:
+    def format_for_llm(self, file_path: str, include_metadata: bool = True) -> tuple[str, Dict[str, str]]:
         """
         Format file content with metadata for LLM consumption.
 
@@ -458,44 +362,23 @@ class FileToLLMConverter:
         Returns:
             Formatted string ready for LLM
         """
-        content, metadata = self.convert_file(file_path)
+        try:
+            content, metadata = self.convert_file(file_path)
 
-        if not metadata.get('success', False):
-            return f"❌ Error processing file: {metadata.get('error', 'Unknown error')}"
-
-        file_type = metadata.get('type', 'unknown')
-        file_name = metadata.get('name', 'unknown')
-
-        if file_type == 'text':
-            result = f"📄 **Text File: {file_name}**\n\n"
-            if include_metadata:
-                result += f"📊 **Metadata:**\n"
-                result += f"- Size: {metadata['size_mb']} MB\n"
-                result += f"- Encoding: {metadata['encoding']}\n"
-                result += f"- Lines: {metadata['line_count']:,}\n"
-                result += f"- Characters: {metadata['char_count']:,}\n\n"
-            result += f"📝 **Content:**\n```{metadata['extension'][1:]}\n{content}\n```"
-
-        elif file_type == 'image':
-            result = f"🖼️ **Image File: {file_name}**\n\n"
-            if include_metadata:
-                result += f"📊 **Metadata:**\n"
-                result += f"- Size: {metadata['size_mb']} MB\n"
-                result += f"- MIME Type: {metadata['mime_type']}\n\n"
-            result += f"🔗 **Image Data (Base64):**\n{content}"
-
-        elif file_type == 'binary':
-            result = f"📦 **Binary File: {file_name}**\n\n"
-            if include_metadata:
-                result += f"📊 **Metadata:**\n"
-                result += f"- Size: {metadata['size_mb']} MB\n"
-                result += f"- Base64 Length: {metadata['base64_length']:,} characters\n\n"
-            result += f"💾 **Binary Data (Base64):**\n{content}"
-
-        else:
-            result = f"❓ **Unknown File: {file_name}**\n\n{content}"
-
-        return result
+            file_type = metadata.get('type', 'unknown')
+            file_name = metadata.get('name', 'unknown')
+            mime_type = metadata.get('mime_type', 'unknown')
+            if file_type == 'text':
+                # For text files, we can include the content directly
+                return content, metadata
+            elif file_type in ('image', 'binary'):
+                result = f"data:{mime_type};base64,{content}"
+                return result, metadata
+            else:
+                raise LlmChatException(f"Unsupported file type: {file_type} for file {file_name}")
+        except Exception as e:
+            err_msg = f"Error formatting file {file_path} for LLM: {e}"
+            raise LlmChatException(err_msg) from e
 
 
 # Example usage and testing
@@ -505,7 +388,7 @@ def main():
 
     # Test with different file types
     test_files = [
-        r"c:/temp/test.txt",
+        #r"c:/temp/test.txt",
         r"c:\temp\test.jpg"
         #"data.csv",
         #"script.py"
