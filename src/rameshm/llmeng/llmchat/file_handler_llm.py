@@ -12,41 +12,6 @@ from rameshm.llmeng.exception.llm_chat_exception import LlmChatException
 from rameshm.llmeng.utils.init_utils import set_environment_logger
 
 
-def convert_binary_file(file_path: str) -> Tuple[str, Dict[str, Any]]:
-    """
-    Convert binary file to base64 with metadata.
-
-    Returns:
-        Tuple of (base64_string, metadata)
-    """
-    file_info = get_file_info(file_path)
-
-    if not file_info['exists']:
-        return "", {"error": f"File not found: {file_path}", **file_info}
-
-    try:
-        with open(file_path, 'rb') as f:
-            binary_data = f.read()
-
-        base64_string = base64.b64encode(binary_data).decode('utf-8')
-
-        metadata = {
-            "type": "binary",
-            "base64_length": len(base64_string),
-            "note": "Binary file encoded as base64. May need special handling.",
-            "success": True,
-            **file_info
-        }
-
-        return base64_string, metadata
-
-    except Exception as e:
-        return "", {
-            "error": f"Failed to encode binary file: {e}",
-            **file_info
-        }
-
-
 class FileToLLMConverter:
     """
     Robust file converter that prepares various file types for LLM consumption.
@@ -65,11 +30,11 @@ class FileToLLMConverter:
         "image": ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.svg'],
         "binary": ['.pdf']
     }
-    BINARY_EXTENSION = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.svg', # Image
-                         '.pdf', '.docx', '.xlsx', }
-
-    BINARY_EXTENSIONS_LARGE = {'.zip', '.tar', '.gz', '.exe',
-                         '.dll', '.so', '.dylib', '.mp3', '.mp4', '.avi', '.mov'}
+    #BINARY_EXTENSION = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.svg', # Image
+    #                      '.pdf', '.docx', '.xlsx', }
+    #
+    # BINARY_EXTENSIONS_LARGE = {'.zip', '.tar', '.gz', '.exe',
+    #                      '.dll', '.so', '.dylib', '.mp3', '.mp4', '.avi', '.mov'}
 
     def __init__(self, max_text_size: int = 1_000_000, max_small_binary_size: int = 10_000_000
                  , max_large_binary_size: int = 20_000_000):

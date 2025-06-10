@@ -1,6 +1,11 @@
 # Byte-compiled / optimized / DLL files
+# My Exclusions
 scratch*.py
-.idea*
+.idea/*
+#!.idea/misc.xml
+#!.idea/modules.xml
+!.idea/runconfigurations
+
 _pycache*
 .env
 
