@@ -205,7 +205,7 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
     clear_btn.click(
         fn=gr_event_handler.start_new_chat,
         inputs=[chat_list],
-        outputs=[chatbot, user_input, system_message, current_chat_id, chat_selector]
+        outputs=[chatbot, chat_history, user_input, system_message, current_chat_id, chat_selector]
     )
 
 if __name__ == "__main__":
