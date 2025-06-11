@@ -99,7 +99,7 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
             with gr.Row():
                 with gr.Column(scale=4):
                     user_input = gr.Textbox(
-                        placeholder="Type your message here... You can paste images or text from clipboard!",
+                        placeholder="Type your message here... You can paste text from clipboard!",
                         label="✍️ Your Message",
                         max_lines=5,
                         show_copy_button=True
@@ -108,7 +108,7 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
                     # File upload component
                     file_upload = gr.File(
                         label="📎 Upload File (Images, Text, Code)",
-                        file_types=["image", ".txt", ".md", ".py", ".js", ".html", ".css", ".json"]
+                        file_types=["pdf", "image", ".txt", ".md", ".py", ".js", ".html", ".css", ".json"]
                     )
 
                 with gr.Column(scale=1):
@@ -126,6 +126,18 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
 
     # Event handlers for chat management
     new_chat_btn.click(
+        fn=gr_event_handler.start_new_chat,
+        inputs=[chat_list],
+        outputs=[chatbot, chat_history, user_input, system_message, current_chat_id, chat_selector]
+    )
+
+    model_selector.select(
+        fn=gr_event_handler.start_new_chat,
+        inputs=[chat_list],
+        outputs=[chatbot, chat_history, user_input, system_message, current_chat_id, chat_selector]
+    )
+
+    system_message.submit(
         fn=gr_event_handler.start_new_chat,
         inputs=[chat_list],
         outputs=[chatbot, chat_history, user_input, system_message, current_chat_id, chat_selector]

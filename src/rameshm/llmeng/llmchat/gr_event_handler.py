@@ -162,10 +162,12 @@ def get_response_from_model(model, langchain_history: List) -> str:
 
 def generate_chat_id(chat_list: Dict[int, LlmChat]) -> int:
     """Generate a unique chat ID based on current timestamp"""
-    if not chat_list and len(chat_list):
+    if chat_list and len(chat_list):
         max_chat_id = max(list(chat_list))
+        logger.debug(f"Creating a New Chat ID. Increment Max chat ID: {max_chat_id} by 1")
         return max_chat_id + 1
-    return 1    # # Start with 1 if no chats exist
+    else:
+        return 1    # # Start with 1 if no chats exist
 
 
 def create_update_chat_in_storage(current_chat_id: Optional[int], updated_history: List,
@@ -184,7 +186,7 @@ def create_update_chat_in_storage(current_chat_id: Optional[int], updated_histor
         # Update current with updated chat
         current_llm_chat = chat_list[current_chat_id]
         current_llm_chat.update_chat_history(updated_history)
-    logger.debug(f"Chat updated with ID: {current_chat_id}, History Length: {len(updated_history)}")
+    logger.debug(f"Chat updated with ID: {current_chat_id}, Chat List Length: {len(chat_list)} History Length: {len(updated_history)}")
     return current_chat_id, chat_list
 
 def get_chat_nm_list(chat_list: Any) -> List[tuple[str, int]]:
@@ -271,50 +273,53 @@ def predict(message: str, history: List, selected_model: str, system_message: st
 
 
 def start_new_chat(chat_list: Dict[int, LlmChat]) -> Tuple[List, List, str, str, Optional[int], Dict]:
-    """Start a new chat"""
+    """Starts a new chat
+    This method resets the chatbot, history, user input, current chat ID, and system message.
+    This is called from multiple places in the UI such as the New Chat button, Model or System Message changed.
+    """
     logger.info("Started new chat")
     chat_list_drop_down = set_chat_selector_drop_down(chat_list)
+    # New chat means resetting the chatbot, history, user input, current chat ID, and system message
     return [], [], "", "", None, chat_list_drop_down,
-#outputs=[chatbot, chat_history, user_input, system_message, current_chat_id, chat_selector]
 
 
 def load_selected_chat(chat_id: str, chat_list: Dict[int, LlmChat]) -> Tuple[List, List, str, str, str, int]:
     """Load selected chat from the Chat List"""
+    try:
+        # Convert Gradio State objects to regular Python object types as needed
+        chat_id = extract_from_gr_state_with_type_check(chat_id, int, None)
+        chat_list = extract_from_gr_state_with_type_check(chat_list, dict, {})
 
-    # Convert Gradio State objects to regular Python object types as needed
-    chat_id = extract_from_gr_state_with_type_check(chat_id, int, None)
-    chat_list = extract_from_gr_state_with_type_check(chat_list, dict, {})
-
-    chat_id = int(chat_id) if chat_id and chat_id.isdigit() else None
-    #llm_chat = next((chat_dict[chat_id] for chat_dict in chat_list if chat_id in chat_dict), None)
-    llm_chat = chat_list.get(chat_id, None)
-    #TODO Should the ChatList be updated here to reflect the current chat?
-    if chat_id and llm_chat:
-        history = llm_chat.get_history()
-        model = llm_chat.get_model_nm()
-        system_message = llm_chat.system_message
-        user_input = ""
-        logger.info(f"Loaded chat: {chat_id} with model: {model}")
-        return history, history, user_input, model, system_message, chat_id
-    else:
-        # Looks like ChatId is not valid or chat history is empty. This can happen when no chat is created yet.
-        # Instead of raising an exception, we will return empty values to reset the UI.
-        logger.warning(f"Chat ID {chat_id} not found or has no history. Resetting UI.")
-        return [], [], "", "", "", chat_id
-
+        llm_chat = chat_list.get(chat_id, None)
+        #TODO Should the ChatList be updated here to reflect the current chat?
+        if chat_id and llm_chat:
+            history = llm_chat.get_history()
+            model = llm_chat.get_model_nm()
+            system_message = llm_chat.system_message
+            user_input = ""
+            logger.info(f"Loaded chat: {chat_id} with model: {model}")
+            return history, history, user_input, model, system_message, chat_id
+        else:
+            # Looks like ChatId is not valid or chat history is empty. This can happen when no chat is created yet.
+            # Instead of raising an exception, we will return empty values to reset the UI.
+            logger.warning(f"Chat ID {chat_id} not found or has no history. Resetting UI.")
+            return [], [], "", "", "", chat_id
+    except Exception as e:
+        err_msg = f"Error loading chat ID {chat_id}: {str(e)}"
+        logger.error(err_msg, exc_info=True)
+        raise LlmChatException(err_msg) from e
 
 #TODO: It is cleaning out the chat history etc., even when the chat being deleted is not the current chat. Fix this so that
 # it deletes the chat from the list only if we are deleting the current chat.
 # Also a good idea to have a confirmation dialog before deleting the chat.
-def delete_selected_chat(deleted_chat_id: str, chat_list: Dict[int, LlmChat], user_input, current_chat_id) -> Tuple[List, str, str, Optional[int], List[tuple[str, str]]]:
+#outputs = [chatbot, user_input, system_message, current_chat_id, chat_selector]
+def delete_selected_chat(deleted_chat_id: str, chat_list: Dict[int, LlmChat], user_input, current_chat_id) -> Tuple[List, str, str, Optional[int], Dict]:
     """Delete selected chat"""
 
     # Convert Gradio State objects to regular Python object types as needed
     deleted_chat_id = extract_from_gr_state_with_type_check(deleted_chat_id, int, None)
     chat_list = extract_from_gr_state_with_type_check(chat_list, dict, {})
     current_chat_id = extract_from_gr_state_with_type_check(current_chat_id, int, None)
-
-    deleted_chat_id = int(deleted_chat_id) if deleted_chat_id.isdigit() else None
 
     if deleted_chat_id and deleted_chat_id in chat_list:
         logger.info(f"Deleting chat ID: {deleted_chat_id}")
@@ -324,13 +329,13 @@ def delete_selected_chat(deleted_chat_id: str, chat_list: Dict[int, LlmChat], us
         logger.warning(f"Chat ID {deleted_chat_id} not found. No action taken.")
     if deleted_chat_id == current_chat_id or current_chat_id is None:
         current_chat_id = None
-        return [], "", "", None, get_chat_nm_list(chat_list)
+        return [], "", "", None, set_chat_selector_drop_down(chat_list, None)
     else:
         logger.info(f"Chat ID {deleted_chat_id} deleted, but it was not the current chat. No action taken on current chat.")
         llm_chat = chat_list.get(current_chat_id, None)
         history = llm_chat.get_history()
         system_message = llm_chat.system_message
-        return history, user_input, system_message, current_chat_id, get_chat_nm_list(chat_list)
+        return history, user_input, system_message, current_chat_id, set_chat_selector_drop_down(chat_list, current_chat_id)
 
 
 # Launch configuration

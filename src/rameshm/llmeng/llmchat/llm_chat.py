@@ -29,12 +29,13 @@ class LlmChat:
     def create_chat_title(self, max_length: int = 50) -> str:
         """Generate chat title from first user message"""
         if not self.history:
-            return f"New Chat - {datetime.now().strftime('%H:%M')}"
+            return f"New Chat - {self.get_model_nm()}_{datetime.now().strftime('%H:%M')}"
 
         first_user_msg = next((msg['content'] for msg in self.history if msg['role'] == 'user'), "")
         if first_user_msg:
-            title = first_user_msg[:max_length]
-            if len(first_user_msg) > max_length:
+            title = self.get_model_nm()
+            title += "-" + first_user_msg[:max_length]
+            if len(first_user_msg) > max_length - len(self.get_model_nm()):
                 title += "..."
             return title
         return f"Chat - {datetime.now().strftime('%H:%M')}"
