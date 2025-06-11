@@ -81,19 +81,20 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
         # Right column for chat interface
         with gr.Column(scale=3):
             # Display model info
-            gr.Markdown("""
-            **💡 Features:**
-            - 💾 **Chat Management**: Save and load conversations
-            - 📎 **File Upload**: Upload images and text files  
-            - 📋 **Clipboard**: Paste content directly into messages
-            - 🎯 **Multiple Models**: OpenAI, Claude, Gemini, Ollama
-            """)
+            # gr.Markdown("""
+            # **💡 Features:**
+            # - 💾 **Chat Management**: Save and load conversations
+            # - 📎 **File Upload**: Upload images and text files
+            # - 📋 **Clipboard**: Paste content directly into messages
+            # - 🎯 **Multiple Models**: OpenAI, Claude, Gemini, Ollama
+            # """)
 
             chatbot = gr.Chatbot(
                 label="💬 Conversation",
                 type="messages",
                 height=400,
-                show_copy_button=True
+                show_copy_button=True,
+                autoscroll=True
             )
 
             with gr.Row():
@@ -107,7 +108,7 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
 
                     # File upload component
                     file_upload = gr.File(
-                        label="📎 Upload File (Images, Text, Code)",
+                        label="📎 Upload File (Images, PDF, Text, Code)",
                         file_types=["pdf", "image", ".txt", ".md", ".py", ".js", ".html", ".css", ".json"]
                     )
 
@@ -146,13 +147,13 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
     chat_selector.select(
         fn=gr_event_handler.load_selected_chat,
         inputs=[chat_selector, chat_list],
-        outputs=[chat_history, chatbot, user_input, model_selector, system_message, current_chat_id]
+        outputs=[chat_history, chatbot, user_input, model_selector, system_message, current_chat_id, chat_selector]
     )
 
     delete_chat_btn.click(
         fn=gr_event_handler.delete_selected_chat,
         inputs=[chat_selector,chat_list, user_input, current_chat_id],
-        outputs=[chatbot, user_input, system_message, current_chat_id, chat_selector]
+        outputs=[chat_history, chatbot, user_input, system_message, current_chat_id, chat_selector]
     )
 
     # File upload handler with proper image processing
@@ -201,7 +202,6 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
         outputs=[uploaded_file_data]
     )
 
-    # TODO: This needs tobe fixed. Not working as expected
     clear_btn.click(
         fn=gr_event_handler.start_new_chat,
         inputs=[chat_list],
