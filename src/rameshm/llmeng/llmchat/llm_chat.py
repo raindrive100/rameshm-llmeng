@@ -28,9 +28,6 @@ class LlmChat:
 
     def create_chat_title(self, max_length: int = 50) -> str:
         """Generate chat title from first user message"""
-        if not self.history:
-            return f"New Chat - {self.get_model_nm()}_{datetime.now().strftime('%H:%M')}"
-
         first_user_msg = next((msg['content'] for msg in self.history if msg['role'] == 'user'), "")
         if first_user_msg:
             title = self.get_model_nm()
