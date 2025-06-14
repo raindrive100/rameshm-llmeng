@@ -190,7 +190,7 @@ class FileToLLMConverter:
             err_msg = f"Path is not a file: {file_path}"
         elif not self.get_file_info(file_path)['size_bytes'] > 0:
             err_msg = f"File is empty: {file_path}"
-        elif not self.is_valid_file_type(file_path):
+        elif not self.is_valid_file_type(file_path, float(os.getenv("FILE_DETECTION_CONFIDENCE_LEVEL_NEEDED"))):
             err_msg = f"Unsupported file type: {file_info['extension']} for file {file_path}"
         elif file_info['extension'].lower() in self.SUPPORTED_FILE_TYPES['text'] and file_info[
             'size_bytes'] > self.max_text_size:
@@ -219,7 +219,7 @@ class FileToLLMConverter:
         :return:
         """
         # PDF extraction
-        self.logger.debug(f"Extracting text from PDF File: {file_path} with include_images: {include_images}")
+        self.logger.debug(f"Starting converting PDF File to string: {file_path} with include_images: {include_images}")
         print(f"File type is:{type(file_path)} Extracting text from PDF File: {file_path}")
         base64_string = ""
         text_string = ""
@@ -241,8 +241,8 @@ class FileToLLMConverter:
                 'base64_length': len(base64_string),
                 **file_info
             }
-            self.logger.debug(f"Finished extracting text from PDF File: {file_path}")
-            return (base64_string, metadata) if include_images else text_string, metadata
+            self.logger.debug(f"Finished converting PDF File to string mime_type: {mime_type} File: {file_path}")
+            return ((base64_string, metadata) if include_images else (text_string, metadata))
         except Exception as e:
             err_msg = f"Failed to read file {file_path} Error: {e}"
             self.logger.error(err_msg, exc_info=True)
@@ -255,7 +255,7 @@ class FileToLLMConverter:
         Returns:
             Tuple of (content, metadata)
         """
-        self.logger.debug(f"Start converting text file to string: {file_path}")
+        self.logger.debug(f"Starting converting text file to string: {file_path}")
 
         file_info = self.get_file_info(file_path)
         encoding, confidence = self.detect_encoding(file_path)
@@ -276,7 +276,7 @@ class FileToLLMConverter:
                 "success": True,
                 **file_info
             }
-            self.logger.debug(f"Completed converting text file to string: {file_path}")
+            self.logger.debug(f"Finished converting text file to string. mime_type: {mime_type} File: {file_path}")
             return content, metadata
 
         except Exception as e:
@@ -339,7 +339,7 @@ class FileToLLMConverter:
                 'base64_length': len(base64_string),
                 **file_info
             }
-            self.logger.debug(f"Finished converting Image file: {file_path} to base64")
+            self.logger.debug(f"Finished converting Image file to base64. mime_type: {mime_type} File: {file_path}")
             return base64_string, metadata
         except Exception as e:
             err_msg = f"Failed to convert file {file_path} to base64: {e}"
