@@ -44,7 +44,7 @@ class MyLogger:
           "disable_existing_loggers": False,
           "formatters": {
             "standard": {
-              "format": "%(asctime)s - %(process)d - %(name)s - %(filename)s - %(lineno)d"
+              "format": "%(asctime)s - %(process)d - %(name)s - %(filename)s - %(funcName)s - %(lineno)d"
                         "- %(levelname)s - %(message)s"
             }
           },
