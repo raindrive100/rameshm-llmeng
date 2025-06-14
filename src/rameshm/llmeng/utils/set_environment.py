@@ -19,6 +19,7 @@ def set_my_environment():
     load_dotenv(key_file)
 
     os.environ.update({
+        "MAX_SIZE_OF_FILE_UPLOADS": str(1024*1024*20),   # 20MB max total size of all uploaded files.
         "LLM_MY_LOGGER_NAME": "llm_engineering",
         "LLM_LOG_TO_FILE": "True",
         "LLM_LOG_DIR": "c:\\temp",
