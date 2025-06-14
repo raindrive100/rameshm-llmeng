@@ -57,15 +57,20 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
                 choices=[
                     "OpenAI: gpt-4o",
                     "OpenAI: gpt-4o-mini",
-                    "OpenAI: gpt-3.5-turbo",
-                    "Claude: claude-3-5-sonnet-20241022",
-                    "Claude: claude-3-5-haiku-20241022",
+                    #"OpenAI: gpt-3.5-turbo",
+                    "Claude: claude-sonnet-4-0",
+                    #"Claude: claude-3-5-sonnet-20241022",
+                    #"Claude: claude-3-5-haiku-20241022",
+                    "Google: gemini-2.5-flash",
+                    "Google: gemini-2.5-pro",
                     "Google: gemini-1.5-flash",
-                    "Google: gemini-1.5-pro",
+                    #"Ollama: llama3.3",
                     "Ollama: llama3.2",
-                    "Ollama: gemma2:2b",
-                    "Ollama: qwen2.5:3b",
-                    "Ollama: mistral:7b"
+                    #"Ollama: gemma3:1b",
+                    "Ollama: gemma3:4b",
+                    #"ollama: gemma3:4b-it-qat",
+                    #"Ollama: qwen2.5:3b",
+                    #"Ollama: mistral:7b"
                 ],
                 value="Ollama: llama3.2",
                 label="🤖 AI Model",
@@ -109,7 +114,8 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
                     # File upload component
                     file_upload = gr.File(
                         label="📎 Upload File (Images, PDF, Text, Code)",
-                        file_types=["pdf", "image", ".txt", ".md", ".py", ".js", ".html", ".css", ".json"]
+                        file_types=["pdf", "image", ".txt", ".md", ".py", ".js", ".html", ".css", ".json", ".java"],
+                        file_count="multiple"
                     )
 
                 with gr.Column(scale=1):
@@ -184,8 +190,9 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
     # )
 
     user_input.submit(
-        fn=lambda msg, hist, model, sys_msg, chat_id, chat_list: gr_event_handler.predict(msg, hist, model, sys_msg, chat_id, chat_list),
-        inputs=[user_input, chat_history, model_selector, system_message, current_chat_id, chat_list],
+        fn=lambda msg, hist, model, sys_msg, chat_id, chat_list, file_upload: gr_event_handler.predict(msg, hist, model, sys_msg,
+                                                                                                       chat_id, chat_list, file_upload),
+        inputs=[user_input, chat_history, model_selector, system_message, current_chat_id, chat_list, file_upload],
         outputs=[user_input, chat_history, chatbot, current_chat_id, chat_list, chat_selector]
     ).then(
         lambda: None,  # Clear uploaded file data after sending
@@ -193,9 +200,9 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
     )
 
     send_btn.click(
-        fn=lambda msg, hist, model, sys_msg, chat_id, chat_list: gr_event_handler.predict(msg, hist, model, sys_msg,
-                                                                                          chat_id, chat_list),
-        inputs=[user_input, chat_history, model_selector, system_message, current_chat_id, chat_list],
+        fn=lambda msg, hist, model, sys_msg, chat_id, chat_list, file_upload: gr_event_handler.predict(msg, hist, model, sys_msg,
+                                                                                          chat_id, chat_list, file_upload),
+        inputs=[user_input, chat_history, model_selector, system_message, current_chat_id, chat_list, file_upload],
         outputs=[user_input, chat_history, chatbot, current_chat_id, chat_list, chat_selector]
     ).then(
         lambda: None,  # Clear uploaded file data after sending
