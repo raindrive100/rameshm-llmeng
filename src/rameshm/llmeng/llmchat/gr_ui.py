@@ -61,10 +61,10 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
                     "Claude: claude-sonnet-4-0",
                     #"Claude: claude-3-5-sonnet-20241022",
                     #"Claude: claude-3-5-haiku-20241022",
-                    "Google: gemini-2.5-flash",
-                    "Google: gemini-2.5-pro",
+                    #"Google: gemini-2.5-flash",    # is not supported for API calls
+                    #"Google: gemini-2.5-pro", # is not supported for API calls
                     "Google: gemini-1.5-flash",
-                    #"Ollama: llama3.3",
+                    #"Ollama: llama3.3", # too big for my local machine
                     "Ollama: llama3.2",
                     #"Ollama: gemma3:1b",
                     "Ollama: gemma3:4b",
@@ -81,6 +81,14 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
                 placeholder="Enter system instructions...",
                 label="📝 System Message",
                 max_lines=3
+            )
+
+            # File upload component
+            file_upload = gr.File(
+                label="📎 Upload File (Images, PDF, Text, Code)",
+                file_types=[".pdf", "image", ".txt", ".md", ".py", ".js", ".html", ".css", ".json", ".java",
+                            ".jpeg", ".jpg"],
+                file_count="multiple"
             )
 
         # Right column for chat interface
@@ -103,63 +111,57 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
             )
 
             with gr.Row():
-                with gr.Column(scale=4):
+                with gr.Column(scale=20):
                     user_input = gr.Textbox(
                         placeholder="Type your message here... You can paste text from clipboard!",
                         label="✍️ Your Message",
                         max_lines=5,
                         show_copy_button=True
                     )
-
-                    # File upload component
-                    file_upload = gr.File(
-                        label="📎 Upload File (Images, PDF, Text, Code)",
-                        file_types=["pdf", "image", ".txt", ".md", ".py", ".js", ".html", ".css", ".json", ".java"],
-                        file_count="multiple"
-                    )
-
-                with gr.Column(scale=1):
-                    send_btn = gr.Button(
-                        "📤 Send",
-                        variant="primary",
-                        size="lg"
-                    )
-
-                    clear_btn = gr.Button(
-                        "🧹 Clear",
-                        variant="secondary",
-                        size="sm"
-                    )
+                # The submit is now only through by clicking return on message input box.
+                # with gr.Column(scale=1):
+                #     send_btn = gr.Button(
+                #         "📤 Send",
+                #         variant="primary",
+                #         size="lg"
+                #     )
+                #
+                #     clear_btn = gr.Button(
+                #         "🧹 Clear",
+                #         variant="secondary",
+                #         size="sm"
+                #     )
 
     # Event handlers for chat management
     new_chat_btn.click(
         fn=gr_event_handler.start_new_chat,
         inputs=[chat_list],
-        outputs=[chatbot, chat_history, user_input, system_message, current_chat_id, chat_selector]
+        outputs=[chatbot, chat_history, user_input, system_message, current_chat_id, chat_selector, file_upload]
     )
 
     model_selector.select(
         fn=gr_event_handler.start_new_chat,
         inputs=[chat_list],
+        # file_upload is deliberately not refreshed so that other models can use the same files
         outputs=[chatbot, chat_history, user_input, system_message, current_chat_id, chat_selector]
     )
 
     system_message.submit(
         fn=gr_event_handler.start_new_chat,
         inputs=[chat_list],
-        outputs=[chatbot, chat_history, user_input, system_message, current_chat_id, chat_selector]
+        outputs=[chatbot, chat_history, user_input, system_message, current_chat_id, chat_selector, file_upload]
     )
 
     chat_selector.select(
         fn=gr_event_handler.load_selected_chat,
         inputs=[chat_selector, chat_list],
-        outputs=[chat_history, chatbot, user_input, model_selector, system_message, current_chat_id, chat_selector]
+        outputs=[chatbot, chat_history, user_input, model_selector, system_message, current_chat_id, chat_selector, file_upload]
     )
 
     delete_chat_btn.click(
         fn=gr_event_handler.delete_selected_chat,
         inputs=[chat_selector,chat_list, user_input, current_chat_id],
-        outputs=[chat_history, chatbot, user_input, system_message, current_chat_id, chat_selector]
+        outputs=[chatbot, chat_history, user_input, system_message, current_chat_id, chat_selector, file_upload]
     )
 
     # File upload handler with proper image processing
@@ -193,27 +195,27 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
         fn=lambda msg, hist, model, sys_msg, chat_id, chat_list, file_upload: gr_event_handler.predict(msg, hist, model, sys_msg,
                                                                                                        chat_id, chat_list, file_upload),
         inputs=[user_input, chat_history, model_selector, system_message, current_chat_id, chat_list, file_upload],
-        outputs=[user_input, chat_history, chatbot, current_chat_id, chat_list, chat_selector]
-    ).then(
-        lambda: None,  # Clear uploaded file data after sending
-        outputs=[uploaded_file_data]
-    )
+        outputs=[user_input, chat_history, chatbot, current_chat_id, chat_list, chat_selector, file_upload]
+    )  #.then(
+    #     lambda: None,  # Clear uploaded file data after sending
+    #     outputs=[uploaded_file_data]
+    # )
 
-    send_btn.click(
-        fn=lambda msg, hist, model, sys_msg, chat_id, chat_list, file_upload: gr_event_handler.predict(msg, hist, model, sys_msg,
-                                                                                          chat_id, chat_list, file_upload),
-        inputs=[user_input, chat_history, model_selector, system_message, current_chat_id, chat_list, file_upload],
-        outputs=[user_input, chat_history, chatbot, current_chat_id, chat_list, chat_selector]
-    ).then(
-        lambda: None,  # Clear uploaded file data after sending
-        outputs=[uploaded_file_data]
-    )
+    # send_btn.click(
+    #     fn=lambda msg, hist, model, sys_msg, chat_id, chat_list, file_upload: gr_event_handler.predict(msg, hist, model, sys_msg,
+    #                                                                                       chat_id, chat_list, file_upload),
+    #     inputs=[user_input, chat_history, model_selector, system_message, current_chat_id, chat_list, file_upload],
+    #     outputs=[user_input, chat_history, chatbot, current_chat_id, chat_list, chat_selector]
+    # ).then(
+    #     lambda: None,  # Clear uploaded file data after sending
+    #     outputs=[uploaded_file_data]
+    # )
 
-    clear_btn.click(
-        fn=gr_event_handler.start_new_chat,
-        inputs=[chat_list],
-        outputs=[chatbot, chat_history, user_input, system_message, current_chat_id, chat_selector]
-    )
+    # clear_btn.click(
+    #     fn=gr_event_handler.start_new_chat,
+    #     inputs=[chat_list],
+    #     outputs=[chatbot, chat_history, user_input, system_message, current_chat_id, chat_selector]
+    # )
 
 if __name__ == "__main__":
     # Initialize the Gradio app
