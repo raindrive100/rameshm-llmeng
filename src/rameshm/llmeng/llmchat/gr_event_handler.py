@@ -15,14 +15,16 @@ from datetime import datetime
 import random
 from typing import List, Dict, Any, Tuple, Optional
 from sympy import false
+import mimetypes    # to get mime types from file name.
 import inspect
 
 from rameshm.llmeng.llmchat.llm_chat import LlmChat
 from rameshm.llmeng.utils.init_utils import set_environment_logger
 from rameshm.llmeng.exception.llm_chat_exception import LlmChatException
+from rameshm.llmeng.llmchat.file_handler_llm import FileToLLMConverter
 from rameshm.llmeng.utils.log_file_wrapper import log_exception_writer
 
-
+# Set the logger
 logger = set_environment_logger()
 
 def set_chat_selector_drop_down(chat_list: Dict[int, LlmChat], current_chat_id: Optional[int] = None) -> Dict:
@@ -72,12 +74,12 @@ def extract_from_gr_state_with_type_check(state_obj: Any, expected_type: type, d
 def validate_inputs(message: str, history: List, model: str, system_message: str) -> tuple:
     """Validate inputs before processing"""
     if not message or not message.strip():
-        logger.error("Please enter a User Message")
-        return false, "Please enter a message"
+        logger.error("User message is empty. Enter a message.")
+        return false, "Enter a message"
 
     if not model:
-        logger.error("Please select a model")
-        return False, "Please select a model"
+        logger.error("Model must be selected. Please select a model.")
+        return False, "Model must be selected. Please select a model."
 
     # Check if required API keys are available
     model_name = model.lower()
@@ -97,7 +99,6 @@ def validate_inputs(message: str, history: List, model: str, system_message: str
     return True, ""
 
 def get_model(model_nm: str):
-    model_nm = model_nm.split(" ")[1].strip()
     logger.debug(f"Generating model instance for model: {model_nm}")
     if "gpt" in model_nm:
         return ChatOpenAI(model=model_nm, api_key=os.getenv("OPENAI_API_KEY"), temperature=0.7, timeout=30)
@@ -126,7 +127,7 @@ def build_langchain_history(history: List, system_message: Optional[str]) -> Lis
     for i, msg in enumerate(history):
         try:
             if msg.get('role') == "user":
-                langchain_history.append(HumanMessage(content=msg['content']))
+                langchain_history.append(HumanMessage(content=msg['content_llm']))
             elif msg.get('role') == "assistant":
                 langchain_history.append(AIMessage(content=msg['content']))
         except Exception as e:
@@ -200,8 +201,179 @@ def get_chat_nm_list(chat_list: Any) -> List[tuple[str, int]]:
     return [(llm_chat.get_chat_title(), k) for k, llm_chat in chat_list_sorted.items()]
 
 
+def validate_uploaded_files(file_paths_uploaded: List[str]) -> Tuple[List[str], bool, bool, str]:
+    """Receive a list of files that are uploaded to be sent to LLM. Validates those files and return a list
+    that are good to be processed or exception if there are serious issues that stops execution.
+
+    Inputs:
+        file_paths: A list of file paths that the user has uploaded
+    Outputs:
+        File Path List: List of files that passed all validations
+        Boolean: True if validations are successful
+        Boolean: True if Fatal Error (further processing should stop). False if not fatal error
+        err_msg: Any error message from validation
+    """
+
+    file_handler_llm = FileToLLMConverter()
+    max_size_of_all_files_uploaded = os.getenv("MAX_SIZE_OF_FILE_UPLOADS")
+    total_size_of_uploaded_file = 0
+    included_files = []
+    excluded_files = []
+    err_msg_outer = ""
+    fatal_error = False
+
+    # Check that the total size of all files doesn't exceed the defined max size.
+    for file_path in file_paths_uploaded:
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            total_size_of_uploaded_file += os.path.getsize(file_path)
+            included_files.append(file_path)
+        else:
+            # Either file is missing or is not a file
+            excluded_files.append({"file": file_path, "Reason": "Is not a file or missing"})
+            err_msg = f"File: {file_path} is either not a file or missing. Ignoring from file upload."
+            logger.warning(err_msg)
+            err_msg_outer += err_msg + "\n"
+    if total_size_of_uploaded_file > max_size_of_all_files_uploaded:
+        # This is a no-no. To avoid costs and system issues. Stop processing.
+        err_msg = f"FATAL ERROR: Total size {total_size_of_uploaded_file} exceeds max_allowed_size of: {max_size_of_all_files_uploaded}. Delete some files"
+        logger.warning(err_msg)
+        err_msg_outer += err_msg + "\n"
+        fatal_error = True
+        return [], True, fatal_error, err_msg_outer # Indicates that the validation failed and that the error is a Fatal Error.
+    else:
+        # Uploaded files are within the limits.
+        # Check to make sure that each file is a file supported by the tool.
+        for index, file_path in enumerate(included_files):
+            file_is_valid, err_msg_file_validation = file_handler_llm.is_valid_file(file_path)
+            if not file_is_valid:
+                if not any(item["file"] == file_path for item in excluded_files):
+                    excluded_files.append({"file": file_path, "Reason": err_msg_file_validation})
+                err_msg = f"Validation failed with error message: {err_msg_file_validation} for File: {file_path}. File is NOT valid and is ignored.\n"
+                logger.warning(err_msg)
+                err_msg_outer += err_msg
+
+        # Exclude all invalid files from the upload eligible list
+        included_files = [file_path for file_path in included_files if file_path not in excluded_files]
+        logger.debug(f"Included files: {included_files}")
+        logger.info(f"Out of a total of {len(file_paths_uploaded)} uploaded, {len(included_files)} number of files are being sent to LLM.")
+        if len(excluded_files) > 0:
+            logger.info(" Total of {len(excluded_files)} are being excluded")
+
+        return included_files, False, fatal_error, err_msg_outer
+
+
+def is_multi_modal(model_nm: str) -> bool:
+    """
+    Retuns whether a model is multi-modal or not
+    :param model_nm: name of the model
+    :return: Returns true if the model is multi-model (i.e. can sypport text, image, voice etc.) else false
+    """
+    multi_modal_models = [ "gpt-4o","gpt-4o-mini", "claude-sonnet-4-0", "gemini-2.5-flash", "gemma3:4b" ]
+    return model_nm in multi_modal_models
+
+
+def build_content_from_uploaded_files(file_paths_uploaded: List[str],
+                                     check_file_validity: bool = True,
+                                     include_images_in_pdf: bool = False,
+                                     include_image_files: bool = False) -> Tuple[List[Dict[str, str]], List[str]]:
+    """
+    Returns a dictionary of the content
+    :param file_paths_uploaded: List of files with path that need to be uploaded to LLM
+    :param model_nm: Model Name to be used
+    :param check_file_validity: Set to True if each file in file list should be checked against established criteria
+    :param include_images_in_pdf: Set to True if images in PDF file should be included. "False" includes only text in PDF
+    :param include_image_files: True-> Include contents of image file;False -> Image files are not sent to LLM
+    :return: List of Dictionaries with File Data
+    """
+    dropped_files = []
+    file_contents = []
+    logger.debug(f"Started building content of message for uploaded file count of: {len(file_paths_uploaded)}")
+    for index, file_path in enumerate(file_paths_uploaded):
+        logger.debug(f"Started building content of message for file: {file_path}")
+        file_handler_llm = FileToLLMConverter()
+        file_data_text, file_meta_data = file_handler_llm.convert_file_to_str(file_path, check_file_validity,
+                                                                              include_images_in_pdf)
+        if file_data_text:
+            file_data_text = f"File Data {index} : \n" + file_data_text.strip()
+            file_type = file_meta_data["file_type"]
+            mime_type = file_meta_data["mime_type"]
+            match str(file_type):
+                case "text":
+                    content_dict = {"type": "text", "text": file_data_text}
+                    file_contents.append(content_dict)
+                case "pdf":
+                    if include_images_in_pdf:
+                        content_dict = {
+                        "type": "file",
+                        "source_type": "base64",
+                        "mime_type": "application/pdf",
+                        "data": file_data_text,
+                        }
+                    else:
+                        content_dict = {"type": "text", "text": file_data_text}
+                    file_contents.append(content_dict)
+                case "image":
+                    if include_image_files:
+                            content_dict = {
+                            "type": "image",
+                            "source_type": "base64",
+                            "mime_type": "image/jpeg",
+                            "data": file_data_text,
+                            }
+                            file_contents.append(content_dict)
+                    else:
+                        dropped_files.append(file_path)
+                case None | _:
+                    err_msg = f"Unsupported file type: {file_type} for File: {file_path}. File is skipped"
+                    dropped_files.append(file_path)
+                    logger.warning(err_msg)
+        logger.debug(f"Finished building content of message for file: {file_path}")
+
+    processed_files = [file_path for file_path in file_paths_uploaded if file_path not in dropped_files]
+    logger.debug(f"Finished preparing content for all files. Excluded: {len(dropped_files)} out of {len(file_paths_uploaded)}")
+
+    return file_contents, processed_files
+
+
+def process_uploaded_files(file_paths_uploaded: List[str], model_nm: str) -> Tuple[List[Dict[str, str]],
+                                                                             List[str]]:
+    """
+    Returns a dictionary of the content
+    :param file_paths_uploaded: List of files with path that need to be uploaded to LLM
+    :param model_nm: Model Name being used
+    :return: List of Dictionaries with File Data
+    """
+    # Set the flags to include images if the model supports images.
+    include_image_files = include_images_in_pdf = is_multi_modal(model_nm)
+
+    # Get filtered list that pass all the file checks
+    if len(file_paths_uploaded) > 0:
+        included_files, validation_successful, fatal_error, err_msg_validation = validate_uploaded_files(
+            file_paths_uploaded)
+        if fatal_error:
+            # Stop processing.
+            logger.warning(err_msg_validation)
+            raise LlmChatException(err_msg_validation)
+        elif len(included_files) > 0:
+            files_content, processed_files = build_content_from_uploaded_files(file_paths_uploaded=included_files,
+                                                              check_file_validity = False, # Files already validated
+                                                              include_images_in_pdf=include_images_in_pdf,
+                                                              include_image_files=include_image_files
+                                                              )
+            return files_content, processed_files
+        else:
+            err_msg = (f"None of the files [{len(file_paths_uploaded)}] uploaded meet the required criteria. "
+                       f"All files are skipped")
+            logger.warning(err_msg)
+            return None, None
+    else:
+        # No files to process
+        return None, None
+
+
 def predict(message: str, history: List, selected_model: str, system_message: str,
-            current_chat_id: Optional[int], chat_list: Dict[int, LlmChat]) -> Tuple[str, List, List, int, List, Dict]:
+            current_chat_id: Optional[int], chat_list: Dict[int, LlmChat],
+            file_paths_uploaded: List[str]) -> Tuple[str, List, List, int, List, Dict]:
     """Enhanced predict function with chat management"""
     logger.debug(f"Processing request - Model: {selected_model}, Message: {message}")
     start_time = time.time()
@@ -219,13 +391,26 @@ def predict(message: str, history: List, selected_model: str, system_message: st
             raise LlmChatException(err_msg)
 
         # Initialize model
-        model = get_model(selected_model)
+        model_nm = selected_model.split(" ")[1].strip() # Stripping out things to get proper model name
+        model = get_model(model_nm)
         logger.debug(f"Model initialized: {type(model).__name__}")
+
+        # Generate content from uploaded files into LLM compatible format.
+        if type(file_paths_uploaded) == list and len(file_paths_uploaded) > 0:
+            uploaded_file_content, processed_files = process_uploaded_files(file_paths_uploaded, model_nm)
+            not_processed_files = [file_path for file_path in file_paths_uploaded if file_path not in processed_files]
+            if type(not_processed_files) == list and len(not_processed_files) > 0:
+                err_msg = (f"Following files were not processed. Please check the following: "
+                           f"1) File contents and file extensions match 2) Total size of files uploaded is less then 20MB"
+                           f"3) That the files exist. Resubmit once corrected")
+                logger.warning(err_msg)
+                raise LlmChatException(err_msg)
 
         # Build langchain history
         langchain_history = build_langchain_history(history, system_message)
         # Add current user message
-        langchain_history.append(HumanMessage(content=message))
+        message_content_for_llm = [{"type": "text", "text": message}]
+        langchain_history.append(HumanMessage(content=message_content_for_llm))
 
         # Make call to the model and get response
         response_content = get_response_from_model(model, langchain_history)
@@ -239,7 +424,7 @@ def predict(message: str, history: List, selected_model: str, system_message: st
 
         # Update conversation history
         history = history + [
-            {"role": "user", "content": message},
+            {"role": "user", "content": message, "content_llm": message_content_for_llm},
             {"role": "assistant", "content": response_content}
         ]
 
@@ -259,8 +444,7 @@ def predict(message: str, history: List, selected_model: str, system_message: st
         logger.error(f"Unexpected error after {elapsed:.2f}s: {e}", exc_info=True)
         error_response = [
             {"role": "user", "content": message},
-            {"role": "assistant", "content": f"🔥 ERROR Exception: Unexpected error: {str(e)}\n\n "
-                                             f"Please select a different model or chat\n"}
+            {"role": "assistant", "content": f"🔥 Please correct the following error and resubmit. ERROR: {str(e)}\n\n "}
         ]
         updated_history = history + error_response
 
