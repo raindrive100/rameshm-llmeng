@@ -51,3 +51,6 @@ dependencies:
     - twilio
     - pydub
     - spyder
+    - pymupdf
+    - pymupdf4llm
+    - pillow
