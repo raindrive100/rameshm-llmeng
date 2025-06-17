@@ -51,7 +51,7 @@ def extract_from_gr_state_with_type_check(state_obj: Any, expected_type: type, d
     Returns:
         The extracted value if it matches expected_type, otherwise default
     """
-    logger.debug(f"DEBUG: Extracting {state_obj} of type {type(state_obj)} expecting {expected_type}")
+    logger.debug(f"DEBUG: Extracting state object of type: {type(state_obj)} expecting {expected_type}")
 
     # Extract the value
     if isinstance(state_obj, gr.State):
@@ -412,7 +412,7 @@ def predict(message: str, history: List, selected_model: str, system_message: st
 
     # To avoid type failures. If file_paths were not uploaded then create an empty list
     file_paths_uploaded = [] if not file_paths_uploaded else file_paths_uploaded
-
+    model_nm = selected_model
     try:
         # Validate inputs
         is_valid, err_msg = validate_inputs(message, history, selected_model, system_message)
@@ -421,7 +421,6 @@ def predict(message: str, history: List, selected_model: str, system_message: st
             raise LlmChatException(err_msg)
 
         # Initialize model
-        model_nm = selected_model
         model = get_model(model_nm)
         logger.debug(f"Model initialized: {type(model).__name__}")
 
@@ -457,7 +456,7 @@ def predict(message: str, history: List, selected_model: str, system_message: st
             logger.error(err_msg)
             raise LlmChatException(err_msg)
         else:
-            logger.info(f"Response: {response_content[-500:]}{'...' if len(response_content) > 500 else ''}")
+            logger.info(f"Response: {response_content[:300]}{'...' if len(response_content) > 300 else ''}")
 
         # Update conversation history
         history = history + [
@@ -487,10 +486,11 @@ def predict(message: str, history: List, selected_model: str, system_message: st
 
         # Construct the Dict for updating chat_list drop down. Pointing to the current chat_id
         chat_list_drop_down = set_chat_selector_drop_down(chat_list, current_chat_id)
+        #file_upload_object = get_file_upload_object(model_nm)
 
         # When an error happens we want to keep history without the error so that the chat can continue
-        # Keep the files uploaded as it is so that user can fix the error.
-        return "", history, updated_history, current_chat_id or "", chat_list, chat_list_drop_down, file_paths_uploaded,
+        # Files uploaded are cleared.
+        return "", history, updated_history, current_chat_id or "", chat_list, chat_list_drop_down, [],
 
 
 def get_file_upload_object(model_nm: str = None) -> gr.File:
