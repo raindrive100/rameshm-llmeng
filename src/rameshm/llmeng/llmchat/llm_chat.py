@@ -2,6 +2,7 @@
 from datetime import datetime
 from typing import List, Dict, Any, Tuple, Optional
 from rameshm.llmeng.utils.init_utils import set_environment_logger
+import rameshm.llmeng.llmchat.chat_constants as chat_constants
 
 class LlmChat:
     def __init__(self, chat_id: int, model_nm: str, history: Optional[List[Dict[str, Any]]] = None, system_message: str = ""):
@@ -11,7 +12,7 @@ class LlmChat:
         self.history = history.copy() if history is not None else []
         self.model_nm = model_nm
         self.system_message = system_message
-        self.title = self.create_chat_title()
+        self.title = self.create_chat_title(chat_constants.get_max_chat_name_length())
         self.created_at = datetime.now().isoformat(timespec="seconds")
         self.updated_at = datetime.now().isoformat(timespec="seconds")
 
