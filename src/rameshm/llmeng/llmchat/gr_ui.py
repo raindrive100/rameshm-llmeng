@@ -16,21 +16,27 @@ logger = set_environment_logger()
 #def create_gr_app():
 # Define all Gradio components and their interactions
 
-with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model_chat:
+# Define Theme
+my_theme = gr.themes.Default(
+    font=["Times New Roman", "Times", "serif"],
+    text_size=gr.themes.sizes.text_md
+)
+
+with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft(), show_button=False) as multi_model_chat:
     # State variables for chat management
-    current_chat_id = gr.State(None)           # Store current chat ID
-    chat_list = gr.State({})     # Store chat list as an array of dictionaries with key as chat_id and value as llm_chat
-    chat_history = gr.State([])            # Store chat history as an array of dictionaries with role and content
+    current_chat_id = gr.State(None)    # Store current chat ID
+    chat_list = gr.State({})            # Store chat list as an array of dictionaries with key as chat_id and value as llm_chat
+    chat_history = gr.State([])         # Store chat history as an array of dictionaries with role and content
 
     gr.Markdown("""
-    # 🧠 Multi-LLM Chatbot with Chat Management
-    Chat with different AI models and manage your conversation history.
-    """)
+    # 🧠 Multi-LLM Chatbot with Chat Management""")
+    # Chat with different AI models and manage your conversation history.
+    # """)
 
     with gr.Row():
         # Left column for chat list
         with gr.Column(scale=1, min_width=250):
-            gr.Markdown("### 💬 Chat History")
+            # gr.Markdown("### 💬 Chat History")
 
             new_chat_btn = gr.Button(
                 "➕ New Chat",
@@ -51,8 +57,8 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
                 size="sm"
             )
 
-            gr.Markdown("---")
-            gr.Markdown("### ⚙️ Settings")
+            # gr.Markdown("---")
+            # gr.Markdown("### ⚙️ Settings")
 
             model_selector = gr.Dropdown(
                 choices=[model['model_nm'] for model in chat_constants.MODEL_ATTRIBUTES],
@@ -89,19 +95,19 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
             chatbot = gr.Chatbot(
                 label="💬 Conversation",
                 type="messages",
-                height=400,
+                height=450,
                 show_copy_button=True,
                 autoscroll=True
             )
 
-            with gr.Row():
-                with gr.Column(scale=20):
-                    user_input = gr.Textbox(
-                        placeholder="Type your message here... You can paste text from clipboard!",
-                        label="✍️ Your Message",
-                        max_lines=5,
-                        show_copy_button=True
-                    )
+            # with gr.Row():
+            #     with gr.Column(scale=20):
+            user_input = gr.Textbox(
+                placeholder="Type your message here... You can paste text from clipboard!",
+                #label="✍️ Your Message"
+                max_lines=5,
+                show_copy_button=True
+            )
                 # The submit is now only through by clicking return on message input box.
                 # with gr.Column(scale=1):
                 #     send_btn = gr.Button(
