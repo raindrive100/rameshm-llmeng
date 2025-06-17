@@ -8,13 +8,14 @@ from typing import List, Dict, Any, Tuple, Optional
 from rameshm.llmeng.llmchat.llm_chat import LlmChat
 from rameshm.llmeng.utils.init_utils import set_environment_logger
 import rameshm.llmeng.llmchat.gr_event_handler as gr_event_handler
-from rameshm.llmeng.llmchat.file_handler_llm import FileToLLMConverter
+import rameshm.llmeng.llmchat.chat_constants as chat_constants
 
 logger = set_environment_logger()
 
 # Enhanced UI with chat management
 #def create_gr_app():
 # Define all Gradio components and their interactions
+
 with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model_chat:
     # State variables for chat management
     current_chat_id = gr.State(None)           # Store current chat ID
@@ -54,25 +55,8 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
             gr.Markdown("### ⚙️ Settings")
 
             model_selector = gr.Dropdown(
-                choices=[
-                    "OpenAI: gpt-4o",
-                    "OpenAI: gpt-4o-mini",
-                    #"OpenAI: gpt-3.5-turbo",
-                    "Claude: claude-sonnet-4-0",
-                    #"Claude: claude-3-5-sonnet-20241022",
-                    #"Claude: claude-3-5-haiku-20241022",
-                    #"Google: gemini-2.5-flash",    # is not supported for API calls
-                    #"Google: gemini-2.5-pro", # is not supported for API calls
-                    "Google: gemini-1.5-flash",
-                    #"Ollama: llama3.3", # too big for my local machine
-                    "Ollama: llama3.2",
-                    #"Ollama: gemma3:1b",
-                    "Ollama: gemma3:4b",
-                    #"ollama: gemma3:4b-it-qat",
-                    #"Ollama: qwen2.5:3b",
-                    #"Ollama: mistral:7b"
-                ],
-                value="Ollama: llama3.2",
+                choices=[model['model_nm'] for model in chat_constants.MODEL_ATTRIBUTES],
+                value="llama3.2",
                 label="🤖 AI Model",
                 interactive=True
             )
@@ -85,10 +69,10 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
 
             # File upload component
             file_upload = gr.File(
-                label="📎 Upload File (Images, PDF, Text, Code)",
-                file_types=[".pdf", "image", ".txt", ".md", ".py", ".js", ".html", ".css", ".json", ".java",
-                            ".jpeg", ".jpg"],
-                file_count="multiple"
+                label="📎 File upload not supported for this model",
+                file_types=None,
+                file_count="multiple",
+                interactive=False
             )
 
         # Right column for chat interface
@@ -135,20 +119,20 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
     # Event handlers for chat management
     new_chat_btn.click(
         fn=gr_event_handler.start_new_chat,
-        inputs=[chat_list],
+        inputs=[chat_list, model_selector],
         outputs=[chatbot, chat_history, user_input, system_message, current_chat_id, chat_selector, file_upload]
     )
 
     model_selector.select(
         fn=gr_event_handler.start_new_chat,
-        inputs=[chat_list],
+        inputs=[chat_list, model_selector],
         # file_upload is deliberately not refreshed so that other models can use the same files
-        outputs=[chatbot, chat_history, user_input, system_message, current_chat_id, chat_selector]
+        outputs=[chatbot, chat_history, user_input, system_message, current_chat_id, chat_selector, file_upload]
     )
 
     system_message.submit(
         fn=gr_event_handler.start_new_chat,
-        inputs=[chat_list],
+        inputs=[chat_list, model_selector],
         outputs=[chatbot, chat_history, user_input, system_message, current_chat_id, chat_selector, file_upload]
     )
 
@@ -165,31 +149,8 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
     )
 
     # File upload handler with proper image processing
-    uploaded_file_data = gr.State(None)
+    #uploaded_file_data = gr.State(None)
 
-
-    # def handle_file_upload(file_path, current_message):
-    #     if file_path:
-    #         text_content, image_base64, image_format = file_handler.process_file_upload(file_path)
-    #
-    #         # Store the processed file data
-    #         file_data = (text_content, image_base64, image_format) if image_base64 else (text_content, None, None)
-    #
-    #         # Update the message textbox
-    #         if current_message:
-    #             new_message = f"{current_message}\n\n{text_content}" if text_content else current_message
-    #         else:
-    #             new_message = text_content or ""
-    #
-    #         return new_message, file_data
-    #     return current_message, None
-    #
-    #
-    # file_upload.change(
-    #     fn=file_handler.handle_file_upload,
-    #     inputs=[file_upload, user_input],
-    #     outputs=[user_input, uploaded_file_data]
-    # )
 
     user_input.submit(
         fn=lambda msg, hist, model, sys_msg, chat_id, chat_list, file_upload: gr_event_handler.predict(msg, hist, model, sys_msg,
