@@ -9,9 +9,10 @@ MODEL_ATTRIBUTES = [
     {"model_nm": "gpt-4o", "model_id": 1, "image_support": True, "raw_pdf_support": False, "text_pdf": True, "supports_file_attachments": True, "supported_types": "Text, Code, PDF, Images", },
     {"model_nm": "gpt-4o-mini", "model_id": 2, "image_support": False, "raw_pdf_support": False, "text_pdf": True, "supports_file_attachments": True, "supported_types": "Text, Code, PDF(Images Ignored)", },
     {"model_nm": "claude-sonnet-4-0", "model_id": 3, "image_support": True, "raw_pdf_support": True, "text_pdf": True,  "supports_file_attachments": True, "supported_types": "Text, Code, PDF, Images", },
-    {"model_nm": "gemini-1.5-flash", "model_id": 4, "image_support": True, "raw_pdf_support": True, "text_pdf": True,  "supports_file_attachments": True, "supported_types": "Text, Code, PDF, Images", },
-    {"model_nm": "llama3.2", "model_id": 5, "image_support": False, "raw_pdf_support": False, "text_pdf": True,  "supports_file_attachments": False, "supported_types": "Text, Code, PDF(Images Ignored)", },
-    {"model_nm": "llama3.4b", "model_id": 6, "image_support": False, "raw_pdf_support": False, "text_pdf": True,  "supports_file_attachments": False, "supported_types": "Text, Code, PDF(Images Ignored)", },
+    #{"model_nm": "claude-3-5-sonnet-2024102", "model_id": 4, "image_support": True, "raw_pdf_support": True, "text_pdf": True,  "supports_file_attachments": True, "supported_types": "Text, Code, PDF, Images", },
+    {"model_nm": "gemini-1.5-flash", "model_id": 5, "image_support": True, "raw_pdf_support": True, "text_pdf": True,  "supports_file_attachments": True, "supported_types": "Text, Code, PDF, Images", },
+    {"model_nm": "llama3.2", "model_id": 6, "image_support": False, "raw_pdf_support": False, "text_pdf": True,  "supports_file_attachments": False, "supported_types": "Text, Code, PDF(Images Ignored)", },
+    {"model_nm": "llama3.4b", "model_id": 7, "image_support": False, "raw_pdf_support": False, "text_pdf": True,  "supports_file_attachments": False, "supported_types": "Text, Code, PDF(Images Ignored)", },
     ]
 
 # The file extensions mentioned in TEXT_FILE_EXTENSIONS, SUPPORTED_FILE_TYPES are the file types that are supported.
@@ -85,7 +86,7 @@ def get_model_supported_file_types(model_nm):
             # TODO: Bundling MS Files with the Image files is a bit hokey. Think a more robust way to handle.
             file_extensions_supported += SUPPORTED_FILE_TYPES['image']
             # TODO: Address later. None of the model APIs are currently supporting Word documents. Hence commenting them out for now.
-            #file_extensions_supported += SUPPORTED_FILE_TYPES['ms-word']
+            file_extensions_supported += SUPPORTED_FILE_TYPES['ms-word']
             #file_extensions_supported += SUPPORTED_FILE_TYPES['ms-excel']
     else:
         # Model doesn't support file attachments.
