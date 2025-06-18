@@ -63,7 +63,7 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
             model_selector = gr.Dropdown(
                 choices=sorted([model['model_nm'] for model in chat_constants.MODEL_ATTRIBUTES]),
                 value="llama3.2",
-                label="🤖 AI Model",
+                label="🤖 LLM Model",
                 interactive=True
             )
 
