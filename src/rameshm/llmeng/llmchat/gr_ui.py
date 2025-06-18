@@ -22,7 +22,7 @@ my_theme = gr.themes.Default(
     text_size=gr.themes.sizes.text_md
 )
 
-with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft(), show_button=False) as multi_model_chat:
+with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model_chat:
     # State variables for chat management
     current_chat_id = gr.State(None)    # Store current chat ID
     chat_list = gr.State({})            # Store chat list as an array of dictionaries with key as chat_id and value as llm_chat
@@ -61,7 +61,7 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft(), show_button=Fa
             # gr.Markdown("### ⚙️ Settings")
 
             model_selector = gr.Dropdown(
-                choices=[model['model_nm'] for model in chat_constants.MODEL_ATTRIBUTES],
+                choices=sorted([model['model_nm'] for model in chat_constants.MODEL_ATTRIBUTES]),
                 value="llama3.2",
                 label="🤖 AI Model",
                 interactive=True
