@@ -5,6 +5,7 @@ from PIL import Image # for processing images
 import io
 import base64 # to convert image files to base64
 import pymupdf # to convert pdf files to text
+from docx import Document
 import chardet # used for detecting text file encoding
 from pathlib import Path
 from typing import Tuple, Optional, Dict, Any
@@ -227,37 +228,64 @@ class FileToLLMConverter:
             raise LlmChatException(err_msg) from e
 
 
-    def extract_text_from_ms_file(self, file_path: str, file_type: str) -> Tuple[str, Dict[str, Any]]:
-        """
-        Extracts text from Microsoft Word and Excel Files.
-        :param file_path: Absolute file location
-        :param file_type: ms-excel or ms-word or ms-powerpoint
-        :return:
-        """
-        # Microsoft File extraction
-        self.logger.debug(f"Starting converting Microsoft File to string: {file_path}")
-        print(f"File type is:{type(file_path)} Extracting text from MS File: {file_path}")
-        base64_string = ""
+    def docx_to_text(self, docx_path, file_type:str="ms-wordx")-> List[Dict[str, str]]:
         try:
-            with open(file_path, 'rb') as f:
-                binary_data = f.read()
-                base64_string = base64.b64encode(binary_data).decode('utf-8')
+            document = Document(docx_path)
+            text_content = []
+            full_text = ""
+            for paragraph in document.paragraphs:
+                text_content.append(paragraph.text)
+            full_text = "\n".join(text_content)
 
-            file_info = self.get_file_info(file_path)
-            mime_type = mimetypes.guess_type(file_path)[0]
+            # Build Metadata into
+            file_info = self.get_file_info(docx_path)
+            mime_type = mimetypes.guess_type(docx_path)[0]
             metadata = {
                 'file_type': file_type,
                 'mime_type': mime_type,
-                'non_base64_length': 0,
-                'base64_length': len(base64_string),
+                'non_base64_length': len(full_text),
+                'base64_length': 0,
                 **file_info
             }
-            self.logger.debug(f"Finished converting Microsoft File to string mime_type: {mime_type} File: {file_path}")
-            return base64_string, metadata
+            self.logger.debug(f"Finished converting Microsoft Word to Plain Text File: {docx_path}")
+            return full_text, metadata
         except Exception as e:
-            err_msg = f"Failed to read file {file_path} Error: {e}"
+            err_msg = f"Failed to read file {docx_path} Error: {e}"
             self.logger.error(err_msg, exc_info=True)
             raise LlmChatException(err_msg) from e
+
+
+    # def extract_text_from_ms_file(self, file_path: str, file_type: str) -> Tuple[str, Dict[str, Any]]:
+    #     """
+    #     Extracts text from Microsoft Word and Excel Files.
+    #     :param file_path: Absolute file location
+    #     :param file_type: ms-excel or ms-word or ms-powerpoint
+    #     :return:
+    #     """
+    #     # Microsoft File extraction
+    #     self.logger.debug(f"Starting converting Microsoft File to string: {file_path}")
+    #     print(f"File type is:{type(file_path)} Extracting text from MS File: {file_path}")
+    #     base64_string = ""
+    #     try:
+    #         with open(file_path, 'rb') as f:
+    #             binary_data = f.read()
+    #             base64_string = base64.b64encode(binary_data).decode('utf-8')
+    #
+    #         file_info = self.get_file_info(file_path)
+    #         mime_type = mimetypes.guess_type(file_path)[0]
+    #         metadata = {
+    #             'file_type': file_type,
+    #             'mime_type': mime_type,
+    #             'non_base64_length': 0,
+    #             'base64_length': len(base64_string),
+    #             **file_info
+    #         }
+    #         self.logger.debug(f"Finished converting Microsoft File to string mime_type: {mime_type} File: {file_path}")
+    #         return base64_string, metadata
+    #     except Exception as e:
+    #         err_msg = f"Failed to read file {file_path} Error: {e}"
+    #         self.logger.error(err_msg, exc_info=True)
+    #         raise LlmChatException(err_msg) from e
 
 
     def extract_text_from_text_file(self, file_path: str, file_type: str = "text") -> Tuple[str, Dict[str, Any]]:
@@ -303,29 +331,29 @@ class FileToLLMConverter:
             # }
 
 
-    def _encode_file_to_base64(self, file_path: str, max_size: Optional[int] = None) -> Tuple[str, Dict[str, Any]]:
-        """Encode file to base64 string with metadata.
-        """
-        self.logger.debug(f"Start encoding file: {file_path} to base64")
-
-        file_info = self.get_file_info(file_path)
-
-        try:
-            with open(file_path, 'rb') as f:
-                binary_data = f.read()
-            base64_string = base64.b64encode(binary_data).decode('utf-8')
-
-            metadata = {
-                "content_length": len(base64_string),
-                "base64_length": len(base64_string),
-                "success": True,
-                **file_info
-            }
-            self.logger.debug(f"Finished encoding file: {file_path} to base64")
-            return base64_string, metadata
-        except Exception as e:
-            err_msg = f"Failed to encode file {file_path} to base64: {e}"
-            raise LlmChatException(err_msg) from e
+    # def _encode_file_to_base64(self, file_path: str, max_size: Optional[int] = None) -> Tuple[str, Dict[str, Any]]:
+    #     """Encode file to base64 string with metadata.
+    #     """
+    #     self.logger.debug(f"Start encoding file: {file_path} to base64")
+    #
+    #     file_info = self.get_file_info(file_path)
+    #
+    #     try:
+    #         with open(file_path, 'rb') as f:
+    #             binary_data = f.read()
+    #         base64_string = base64.b64encode(binary_data).decode('utf-8')
+    #
+    #         metadata = {
+    #             "content_length": len(base64_string),
+    #             "base64_length": len(base64_string),
+    #             "success": True,
+    #             **file_info
+    #         }
+    #         self.logger.debug(f"Finished encoding file: {file_path} to base64")
+    #         return base64_string, metadata
+    #     except Exception as e:
+    #         err_msg = f"Failed to encode file {file_path} to base64: {e}"
+    #         raise LlmChatException(err_msg) from e
 
 
     def extract_base64_from_image_file(self, file_path: str,
@@ -410,8 +438,8 @@ class FileToLLMConverter:
                 return self.extract_base64_from_image_file(file_path, file_type)
             elif file_type == "pdf":
                 return self.extract_text_from_pdf_file(file_path, include_images_in_pdf, file_type)
-            elif file_type in ("ms-excel", "ms-word"):
-                return self.extract_text_from_ms_file(file_path, file_type)
+            elif file_type in ("ms-wordx"):
+                return self.docx_to_text(file_path, file_type)
             else:
                 err_msg = f"Unsupported file extension: {file_ext} in file {file_path}"
                 raise LlmChatException(err_msg)
