@@ -54,3 +54,5 @@ dependencies:
     - pymupdf
     - pymupdf4llm
     - pillow
+    - python-docx
+    - python-pptx

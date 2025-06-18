@@ -104,7 +104,7 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
             #     with gr.Column(scale=20):
             user_input = gr.Textbox(
                 placeholder="Type your message here... You can paste text from clipboard!",
-                #label="✍️ Your Message"
+                label="✍️ Your Message",
                 max_lines=5,
                 show_copy_button=True
             )
