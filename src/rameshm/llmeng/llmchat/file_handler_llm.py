@@ -228,7 +228,7 @@ class FileToLLMConverter:
             raise LlmChatException(err_msg) from e
 
 
-    def docx_to_text(self, docx_path, file_type:str="ms-wordx")-> List[Dict[str, str]]:
+    def docx_to_text(self, docx_path, file_type:str="ms-wordx")-> Tuple[str, Dict[str, Any]]:
         try:
             document = Document(docx_path)
             text_content = []
