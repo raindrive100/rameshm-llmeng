@@ -27,8 +27,9 @@ SUPPORTED_FILE_TYPES = {
     "text": TEXT_FILE_EXTENSIONS,
     "image": ['image', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.svg'],
     "pdf": ['.pdf'],
-    "ms-word": ['.docx'],
-    "ms-excel": ['.xlsx']
+    "ms-wordx": ['.docx'],
+    "ms-excelx": ['.xlsx'],
+    "ms-pptx": [".pptx"],
     }
 
 # Define some utility methods.
@@ -86,8 +87,9 @@ def get_model_supported_file_types(model_nm):
             # TODO: Bundling MS Files with the Image files is a bit hokey. Think a more robust way to handle.
             file_extensions_supported += SUPPORTED_FILE_TYPES['image']
             # TODO: Address later. None of the model APIs are currently supporting Word documents. Hence commenting them out for now.
-            file_extensions_supported += SUPPORTED_FILE_TYPES['ms-word']
-            #file_extensions_supported += SUPPORTED_FILE_TYPES['ms-excel']
+            file_extensions_supported += SUPPORTED_FILE_TYPES['ms-wordx']
+            #file_extensions_supported += SUPPORTED_FILE_TYPES['ms-excelx']
+            # file_extensions_supported += SUPPORTED_FILE_TYPES['ms-pptx']
     else:
         # Model doesn't support file attachments.
         pass
