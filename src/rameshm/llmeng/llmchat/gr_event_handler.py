@@ -325,8 +325,13 @@ def build_content_from_uploaded_files(file_paths_validated: List[str],
                     else:
                         dropped_files.append(file_path)
                         logger.info(f"File is being dropped because it not a supported file type. File being skipped: {file_nm}")
-                case "ms-wordx": # We get it as Text. Any images in the .docx file are ignored.
-                    content_dict = {"type": "text", "text": file_data_text}
+                case "ms-excel" | "ms-word":
+                    content_dict = {
+                        "type": "file", # Using Langchain which needs type to be "file". If using Anthropic directly then this should be "document"
+                        "source_type": "base64",
+                        "mime_type": mime_type,
+                        "data": file_data_text,
+                    }
                     file_contents.append(content_dict)
                 case None | _:
                     err_msg = f"Unsupported file type: {file_type} for File: {file_nm}. File is skipped"
