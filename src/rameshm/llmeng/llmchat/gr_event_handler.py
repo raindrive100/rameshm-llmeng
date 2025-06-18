@@ -292,7 +292,9 @@ def build_content_from_uploaded_files(file_paths_validated: List[str],
         file_handler_llm = FileToLLMConverter()
         file_data_text, file_meta_data = file_handler_llm.convert_file_to_str(file_path, check_file_validity,
                                                                               include_images_in_pdf)
-        logger.debug(f"Generated text length of file: {len(file_data_text)}")
+        # Print first characters of the file content
+        logger.debug(f"Generated text length of file: {len(file_data_text)}; "
+                     f"First few char representation of file: {file_data_text[:100]}")
         if file_data_text:
             file_data_text = file_data_text.strip()
             file_type = file_meta_data["file_type"] # Has keys from chat_constants.SUPPORTED_FILE_TYPES
@@ -440,8 +442,8 @@ def predict(message: str, history: List, selected_model: str, system_message: st
         else:
             message_content_for_llm = message
         langchain_history.append(HumanMessage(content=message_content_for_llm))
-        logger.debug(f"Role: user message content: {message_content_for_llm[:300]}"
-                     f"{'...' if len(message_content_for_llm) > 300 else ''}") # print only small part of message
+        logger.debug(f"Role: user message: {message[:300]}"
+                     f"{'...' if len(message) > 300 else ''}") # print only small part of message
 
         # Make call to the model and get response
         response_content = get_response_from_model(model, langchain_history)
