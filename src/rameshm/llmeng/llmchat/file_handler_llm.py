@@ -220,13 +220,14 @@ class FileToLLMConverter:
             raise LlmChatException(err_msg) from e
 
 
-    def extract_text_from_pdf_file(self, file_path: str, include_images: bool = False) -> Tuple[str, Dict[str, Any]]:
+    def extract_text_from_pdf_file(self, file_path: str, include_images: bool = False, file_type: str = "pdf") -> Tuple[str, Dict[str, Any]]:
         """
         Extract text from PDF file.
 
         Args:
             file_path: Absolute path to the PDF file
             include_images: If True, returns base64 encoded content including images
+            file_type: "pdf" is passed.
 
         Returns:
             Tuple of (content, metadata)
@@ -248,7 +249,7 @@ class FileToLLMConverter:
                     content_type = 'text'
             
             metadata = {
-                'file_type': 'pdf',
+                'file_type': file_type,
                 'mime_type': mime_type,
                 'content_type': content_type,
                 'content_length': len(content),
@@ -263,12 +264,13 @@ class FileToLLMConverter:
             raise LlmChatException(err_msg) from e
 
 
-    def convert_docx_to_text(self, file_path: str) -> Tuple[str, Dict[str, Any]]:
+    def convert_docx_to_text(self, file_path: str, file_type: str = "ms-wordx") -> Tuple[str, Dict[str, Any]]:
         """
         Convert DOCX file to text.
 
         Args:
             file_path: Absolute path to the DOCX file
+            file_type: ms-wordx is typically passed.
 
         Returns:
             Tuple of (text_content, metadata)
@@ -284,7 +286,7 @@ class FileToLLMConverter:
             mime_type = mimetypes.guess_type(file_path)[0]
             
             metadata = {
-                'file_type': 'docx',
+                'file_type': file_type,
                 'mime_type': mime_type,
                 'content_length': len(text_content),
                 **file_info
@@ -298,12 +300,13 @@ class FileToLLMConverter:
             raise LlmChatException(err_msg) from e
 
 
-    def convert_text_file(self, file_path: str) -> Tuple[str, Dict[str, Any]]:
+    def convert_text_file_to_text(self, file_path: str, file_type: str = "text") -> Tuple[str, Dict[str, Any]]:
         """
         Convert text file to LLM-ready format.
 
         Args:
             file_path: Absolute path to the text file
+            file_type: "text" is typically passed
 
         Returns:
             Tuple of (content, metadata)
@@ -319,11 +322,11 @@ class FileToLLMConverter:
             # Use UTF-8 for ASCII encoding to ensure compatibility
             encoding = "utf-8" if "ascii" in encoding else encoding
             
-            with open(file_path, 'r', encoding=encoding) as f:
+            with open(file_path, 'r', encoding=encoding) as f: # Not "rb" because encoding is specified.
                 content = f.read()
             
             metadata = {
-                'file_type': 'text',
+                'file_type': file_type,
                 'mime_type': mime_type,
                 'encoding': encoding,
                 'content_length': len(content),
@@ -340,12 +343,13 @@ class FileToLLMConverter:
             raise LlmChatException(err_msg) from e
 
 
-    def convert_image_to_base64(self, file_path: str) -> Tuple[str, Dict[str, Any]]:
+    def convert_image_to_base64(self, file_path: str, file_type: str = "image") -> Tuple[str, Dict[str, Any]]:
         """
         Convert image file to base64 string.
 
         Args:
             file_path: Absolute path to the image file
+            file_type: "image" is typically passed.
 
         Returns:
             Tuple of (base64_string, metadata)
@@ -364,7 +368,7 @@ class FileToLLMConverter:
             mime_type = mimetypes.guess_type(file_path)[0]
             
             metadata = {
-                'file_type': 'image',
+                'file_type': file_type,
                 'mime_type': mime_type,
                 'content_length': len(base64_string),
                 **file_info
@@ -405,7 +409,7 @@ class FileToLLMConverter:
             return None, mime_type
 
 
-    def convert_file_to_str(self, file_path: str, check_file_validity: bool = false,
+    def convert_file_to_str(self, file_path: str, check_file_validity: bool = False,
                             include_images_in_pdf = False) -> Tuple[str, Dict[str, Any]]:
         """
         Main method to convert any file to LLM-ready format.
@@ -429,13 +433,13 @@ class FileToLLMConverter:
             file_ext = Path(file_path).suffix.lower()
             file_type, mime_type = self.get_file_type(file_path)
             if file_type == "text":
-                return self.extract_text_from_text_file(file_path, file_type)
+                return self.convert_text_file_to_text(file_path, file_type)
             elif file_type == "image":
-                return self.extract_base64_from_image_file(file_path, file_type)
+                return self.convert_image_to_base64(file_path, file_type)
             elif file_type == "pdf":
                 return self.extract_text_from_pdf_file(file_path, include_images_in_pdf, file_type)
             elif file_type in ("ms-wordx"):
-                return self.docx_to_text(file_path, file_type)
+                return self.convert_docx_to_text(file_path, file_type)
             else:
                 err_msg = f"Unsupported file extension: {file_ext} in file {file_path}"
                 raise LlmChatException(err_msg)
