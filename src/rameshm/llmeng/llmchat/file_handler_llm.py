@@ -1,21 +1,21 @@
-import mimetypes # To determine mime-type of the file
-import puremagic # To determine the file type, i.e. image vs. pdf vs. text
-import os
-from PIL import Image # for processing images
+import base64
 import io
-import base64 # to convert image files to base64
-import pymupdf # to convert pdf files to text
-from docx import Document
-import chardet # used for detecting text file encoding
+import json
+import mimetypes
+import os
 from pathlib import Path
 from typing import Tuple, Optional, Dict, Any
-import json
 
-from traits.trait_types import false
+import chardet
+import puremagic
+import pymupdf
+from PIL import Image
+from docx import Document
 
+import rameshm.llmeng.llmchat.chat_constants as chat_constants
 from rameshm.llmeng.exception.llm_chat_exception import LlmChatException
 from rameshm.llmeng.utils.init_utils import set_environment_logger
-import rameshm.llmeng.llmchat.chat_constants as chat_constants
+
 
 class FileToLLMConverter:
     """
@@ -23,14 +23,19 @@ class FileToLLMConverter:
     Handles text files, images, and other binary formats safely.
     """
 
-    def __init__(self, max_text_size: int = 1_000_000, max_small_binary_size: int = 10_000_000
-                 , max_large_binary_size: int = 20_000_000):
+    def __init__(
+        self, 
+        max_text_size: int = 1_000_000,
+        max_small_binary_size: int = 10_000_000,
+        max_large_binary_size: int = 20_000_000
+    ) -> None:
         """
-        Initialize converter with size limits.
+        Initialize file converter with size limits.
 
         Args:
             max_text_size: Maximum size for text files (1MB default)
-            max_small_binary_size: Maximum size for image and binary files (20MB default)
+            max_small_binary_size: Maximum size for image and binary files (10MB default)
+            max_large_binary_size: Maximum size for large binary files (20MB default)
         """
         self.logger = set_environment_logger()
         self.max_text_size = max_text_size
@@ -39,13 +44,24 @@ class FileToLLMConverter:
 
 
     def get_file_info(self, file_path: str) -> Dict[str, Any]:
-        """Get comprehensive file information."""
+        """
+        Get comprehensive file information.
+
+        Args:
+            file_path: Absolute path to the file
+
+        Returns:
+            Dictionary containing file information
+
+        Raises:
+            LlmChatException: If file information cannot be retrieved
+        """
         try:
-            #stat = os.stat(file_path)
+            size_bytes = os.path.getsize(file_path)
             return {
                 'name': os.path.basename(file_path),
-                'size_bytes': os.path.getsize(file_path), #  stat.st_size,
-                'size_mb': round(os.path.getsize(file_path) / (1024 * 1024), 2),
+                'size_bytes': size_bytes,
+                'size_mb': round(size_bytes / (1024 * 1024), 2),
                 'extension': Path(file_path).suffix.lower(),
                 'exists': True
             }
@@ -53,344 +69,324 @@ class FileToLLMConverter:
             err_msg = f"Error getting file info for file: {file_path}: {e}"
             self.logger.error(err_msg)
             raise LlmChatException(err_msg) from e
-            # return {
-            #     'name': os.path.basename(file_path),
-            #     'error': str(e),
-            #     'exists': False
-            # }
 
 
     def detect_non_text_file_type(self, file_path: str) -> Tuple[Optional[str], float]:
-        max_confidence = 0
-        mime_type = None
-        self.logger.debug(f"Detecting mime_type and confidence levels for non-text files for file: {file_path}")
-        magic_infos = puremagic.magic_file(file_path) # returns a list containing mime-types and confidence
-        for magic_info in magic_infos:
-            if magic_info.confidence > max_confidence:
-                max_confidence = magic_info.confidence
-                mime_type = magic_info.mime_type
-        self.logger.debug(f"mime_type: {mime_type} Confidence: {max_confidence} for file: {file_path}")
-        return mime_type, max_confidence
-
-    def detect_text_file_encoding(self, file_path: str, sample_size: int = 8192) -> Tuple[str, float]:
         """
-        Detect file detected_encoding. Works best for text files
-
-        Args:
-            file_path: Absolute Path to the file
-            sample_size: Bytes to sample for detection (default 8KB)
-
-        Returns:
-            Detected detected_encoding string
-        """
-        self.logger.debug(f"Detecting Text encoding for file: {file_path}")
-        try:
-            with open(file_path, 'rb') as f: # Read file in binary mode
-                raw_sample = f.read(sample_size)
-
-            if not raw_sample:
-                return None, 0  # Unable to read the file.
-
-            # Try chardet detection
-            result = chardet.detect(raw_sample)
-            detected_encoding = result.get('encoding')
-            confidence = result.get('confidence', 0)
-            self.logger.debug(f"Finished encoding for Text with encoding: {detected_encoding} with confidence: {confidence} for file: {file_path}")
-            return detected_encoding, confidence
-        except Exception as e:
-            err_msg = f"Encoding detection error for file {file_path}: {e}."
-            self.logger.error(err_msg, exc_info=True)
-            raise LlmChatException(err_msg) from e
-
-
-    def is_valid_file_type(self, file_path: str, confidence_level_needed = 1.0) -> bool:
-        """ Make sure that file extensions matches and the file contents match with high confidence.
-        Return True if it does else False
-        """
-        self.logger.debug(f"Starting validation of file type for file: {file_path} with "
-                          f"desired confidence of: {confidence_level_needed}")
-        is_valid_type = False  # Initialized to false and then set to pass if all checks pass.
-
-        file_extension = Path(file_path).suffix.lower()
-        file_type_supported = file_extension.lower() in chat_constants.get_supported_file_types_as_str()
-
-        mime_type = mimetypes.guess_type(file_path)[0]
-        self.logger.debug(f"Mime type is {mime_type} for file: {file_path}")
-        mime_type_binary, confidence_binary = self.detect_non_text_file_type(file_path)
-        encoding, confidence_text = self.detect_text_file_encoding(file_path)
-        confidence = confidence_binary if confidence_binary > confidence_text else confidence_text
-
-        # Make sure that the mime_types match the confidence from their corresponding confidence functions.
-        # This ensures that the file extensions are
-        # properly matching the type of data stored in the files. For example, a text file stored as .jpg will be rejected.
-        if not file_type_supported:
-            is_valid_type = False
-            msg = f"File type: {file_extension} is not supported for file: {file_path}"
-            self.logger.warning(msg)
-        elif "text" in mime_type and confidence_text >= confidence_level_needed:
-            is_valid_type = True
-            msg = (
-                f"Confidence level of {confidence_text} in identifying the file is >= {confidence_level_needed} MimeType: {mime_type}. "
-                f"Encoding: {encoding}. Returning True for is_valid_file_type")
-            self.logger.debug(msg)
-        elif mime_type == mime_type_binary and confidence_binary >= confidence_level_needed:
-            # Treating everything other than "text" file as a Binary File. We may need to revist this.
-            is_valid_type = True
-            msg = (f"Confidence level of {confidence_binary} in identifying the file is >= {confidence_level_needed} MimeType: {mime_type}. "
-                   f"Returning True for is_valid_file_type")
-            self.logger.debug(msg)
-        else:
-            # Confidence levels are lower than required.
-            is_valid_type = False
-            msg = (f"Confidence_binary: {confidence_binary}, confidence_text: {confidence_text} are both lower than {confidence_level_needed}."
-                   f"Make sure that the file extensions match the file contents")
-            self.logger.warning(msg)
-
-        self.logger.debug(f"Completed validation of file type for file: {file_path} with "
-                          f"desired confidence of: {confidence_level_needed}")
-
-        return is_valid_type
-
-    def is_valid_file(self, file_path: str) -> (bool, str):
-        """
-        Perform basic checks on the file.
+        Detect MIME type and confidence for non-text files using puremagic.
 
         Args:
             file_path: Absolute path to the file
 
         Returns:
-            True if file passes checks, False otherwise.
-            Error message if checks fail, None if checks pass.
+            Tuple of (mime_type, confidence)
         """
-        self.logger.debug(f"Performing file_checks on file: {file_path}")
-        file_info = self.get_file_info(file_path)
-        err_msg = None
-
-        # Perform multiple checks on the file.
-        if not os.path.exists(file_path):
-            err_msg = f"File not found: {file_path}"
-        elif not os.path.isfile(file_path):
-            err_msg = f"Path is not a file: {file_path}"
-        elif not file_info['size_bytes'] > 0:
-            err_msg = f"File is empty: {file_path}"
-        elif not file_info['extension'].lower() in chat_constants.get_supported_file_types_as_str():
-            err_msg = f"{file_info['extension']} is not a supported file type"
-        elif not self.is_valid_file_type(file_path, chat_constants.get_file_detection_confidence_needed()):
-            err_msg = f"Unsupported file type: {file_info['extension']} for file {file_path}"
-
-        if not err_msg:
-            self.logger.info(f"File checks passed for {file_path}: {file_info}")
-            return True, None
-        else:
-            # For now raising exception for any file check errors. Later we can handle this more gracefully
-            self.logger.warning(f"File checks Failed for {file_path}. Error: {err_msg}: File Info: {file_info}")
-            raise LlmChatException(err_msg)
-
-
-    def extract_text_from_pdf_file(self, file_path: str, include_images=False,
-                                   file_type: str= "pdf") -> Tuple[str, Dict[str, Any]]:
-        """
-        Extracts text from PDF.
-        :param file_path: Absolute file location
-        :param include_images: Set it to True if the model can handle imagaes etc. within PDF.
-                                If "True" returns base64
-                                If "False: returns plan text. Images etc from PDF are dropped.
-        :return:
-        """
-        # PDF extraction
-        self.logger.debug(f"Starting converting PDF File to string: {file_path} with include_images: {include_images}")
-        print(f"File type is:{type(file_path)} Extracting text from PDF File: {file_path}")
-        base64_string = ""
-        text_string = ""
         try:
-            if include_images:
-                with open(file_path, 'rb') as f:
-                    binary_data = f.read()
-                    base64_string = base64.b64encode(binary_data).decode('utf-8')
-            else:
-                with pymupdf.open(file_path, filetype="pdf") as doc:  # open document
-                    text_string = chr(12).join([page.get_text() for page in doc])
+            magic_infos = puremagic.magic_file(file_path)
+            max_confidence = 0
+            mime_type = None
+            
+            for magic_info in magic_infos:
+                if magic_info.confidence > max_confidence:
+                    max_confidence = magic_info.confidence
+                    mime_type = magic_info.mime_type
+            
+            self.logger.debug(f"Detected MIME type: {mime_type} with confidence: {max_confidence}")
+            return mime_type, max_confidence
+        except Exception as e:
+            err_msg = f"Failed to detect file type for {file_path}: {e}"
+            self.logger.error(err_msg)
+            raise LlmChatException(err_msg) from e
 
-            file_info = self.get_file_info(file_path)
+
+    def detect_text_file_encoding(self, file_path: str, sample_size: int = 8192) -> Tuple[str, float]:
+        """
+        Detect file encoding using chardet.
+
+        Args:
+            file_path: Absolute path to the file
+            sample_size: Bytes to sample for detection (default 8KB)
+
+        Returns:
+            Tuple of (encoding, confidence)
+
+        Raises:
+            LlmChatException: If encoding detection fails
+        """
+        try:
+            with open(file_path, 'rb') as f:
+                raw_sample = f.read(sample_size)
+
+            if not raw_sample:
+                return None, 0
+
+            result = chardet.detect(raw_sample)
+            encoding = result.get('encoding', 'utf-8')
+            confidence = result.get('confidence', 0)
+            
+            self.logger.debug(f"Detected encoding: {encoding} with confidence: {confidence}")
+            return encoding, confidence
+        except Exception as e:
+            err_msg = f"Failed to detect encoding for {file_path}: {e}"
+            self.logger.error(err_msg)
+            raise LlmChatException(err_msg) from e
+
+
+    def is_valid_file_type(self, file_path: str, confidence_threshold: float = 1.0) -> bool:
+        """
+        Validate file type based on extension and content confidence.
+
+        Args:
+            file_path: Absolute path to the file
+            confidence_threshold: Minimum confidence level required
+
+        Returns:
+            True if file type is valid, False otherwise
+        """
+        try:
+            file_extension = Path(file_path).suffix.lower()
+            
+            # Check if file type is supported
+            if file_extension not in chat_constants.get_supported_file_types_as_str():
+                self.logger.warning(f"Unsupported file type: {file_extension} for {file_path}")
+                return False
+
+            # Get MIME types and confidence levels
             mime_type = mimetypes.guess_type(file_path)[0]
-            metadata = {
-                'file_type': file_type,
-                'mime_type': mime_type,
-                'non_base64_length': len(text_string),
-                'base64_length': len(base64_string),
-                **file_info
-            }
-            self.logger.debug(f"Finished converting PDF File to string mime_type: {mime_type} File: {file_path}")
-            return ((base64_string, metadata) if include_images else (text_string, metadata))
+            mime_type_binary, confidence_binary = self.detect_non_text_file_type(file_path)
+            encoding, confidence_text = self.detect_text_file_encoding(file_path)
+            confidence = max(confidence_binary, confidence_text)
+
+            # Validate based on file type
+            if "text" in mime_type:
+                is_valid = confidence_text >= confidence_threshold
+                self.logger.debug(f"Text file validation: confidence={confidence_text}, threshold={confidence_threshold}")
+            else:
+                is_valid = mime_type == mime_type_binary and confidence_binary >= confidence_threshold
+                self.logger.debug(f"Binary file validation: confidence={confidence_binary}, threshold={confidence_threshold}")
+
+            if not is_valid:
+                self.logger.warning(f"File validation failed for {file_path}: confidence={confidence} < threshold={confidence_threshold}")
+
+            return is_valid
         except Exception as e:
-            err_msg = f"Failed to read file {file_path} Error: {e}"
-            self.logger.error(err_msg, exc_info=True)
+            err_msg = f"Failed to validate file type for {file_path}: {e}"
+            self.logger.error(err_msg)
             raise LlmChatException(err_msg) from e
 
 
-    def docx_to_text(self, docx_path, file_type:str="ms-wordx")-> Tuple[str, Dict[str, Any]]:
-        try:
-            document = Document(docx_path)
-            text_content = []
-            full_text = ""
-            for paragraph in document.paragraphs:
-                text_content.append(paragraph.text)
-            full_text = "\n".join(text_content)
-
-            # Build Metadata into
-            file_info = self.get_file_info(docx_path)
-            mime_type = mimetypes.guess_type(docx_path)[0]
-            metadata = {
-                'file_type': file_type,
-                'mime_type': mime_type,
-                'non_base64_length': len(full_text),
-                'base64_length': 0,
-                **file_info
-            }
-            self.logger.debug(f"Finished converting Microsoft Word to Plain Text File: {docx_path}")
-            return full_text, metadata
-        except Exception as e:
-            err_msg = f"Failed to read file {docx_path} Error: {e}"
-            self.logger.error(err_msg, exc_info=True)
-            raise LlmChatException(err_msg) from e
-
-
-    # def extract_text_from_ms_file(self, file_path: str, file_type: str) -> Tuple[str, Dict[str, Any]]:
-    #     """
-    #     Extracts text from Microsoft Word and Excel Files.
-    #     :param file_path: Absolute file location
-    #     :param file_type: ms-excel or ms-word or ms-powerpoint
-    #     :return:
-    #     """
-    #     # Microsoft File extraction
-    #     self.logger.debug(f"Starting converting Microsoft File to string: {file_path}")
-    #     print(f"File type is:{type(file_path)} Extracting text from MS File: {file_path}")
-    #     base64_string = ""
-    #     try:
-    #         with open(file_path, 'rb') as f:
-    #             binary_data = f.read()
-    #             base64_string = base64.b64encode(binary_data).decode('utf-8')
-    #
-    #         file_info = self.get_file_info(file_path)
-    #         mime_type = mimetypes.guess_type(file_path)[0]
-    #         metadata = {
-    #             'file_type': file_type,
-    #             'mime_type': mime_type,
-    #             'non_base64_length': 0,
-    #             'base64_length': len(base64_string),
-    #             **file_info
-    #         }
-    #         self.logger.debug(f"Finished converting Microsoft File to string mime_type: {mime_type} File: {file_path}")
-    #         return base64_string, metadata
-    #     except Exception as e:
-    #         err_msg = f"Failed to read file {file_path} Error: {e}"
-    #         self.logger.error(err_msg, exc_info=True)
-    #         raise LlmChatException(err_msg) from e
-
-
-    def extract_text_from_text_file(self, file_path: str, file_type: str = "text") -> Tuple[str, Dict[str, Any]]:
+    def is_valid_file(self, file_path: str) -> Tuple[bool, Optional[str]]:
         """
-        Convert text file to LLM-ready format.
+        Perform comprehensive file validation.
+
+        Args:
+            file_path: Absolute path to the file
+
+        Returns:
+            Tuple of (is_valid, error_message)
+
+        Raises:
+            LlmChatException: If file validation fails
+        """
+        try:
+            file_info = self.get_file_info(file_path)
+            
+            # Basic file existence and type checks
+            if not os.path.exists(file_path):
+                raise LlmChatException(f"File not found: {file_path}")
+            
+            if not os.path.isfile(file_path):
+                raise LlmChatException(f"Path is not a file: {file_path}")
+            
+            if file_info['size_bytes'] <= 0:
+                raise LlmChatException(f"File is empty: {file_path}")
+            
+            # File type validation
+            if file_info['extension'].lower() not in chat_constants.get_supported_file_types_as_str():
+                raise LlmChatException(f"Unsupported file type: {file_info['extension']}")
+            
+            # Content validation
+            if not self.is_valid_file_type(file_path, chat_constants.get_file_detection_confidence_needed()):
+                raise LlmChatException(f"Invalid file content for: {file_path}")
+            
+            self.logger.info(f"File validation passed for {file_path}: {file_info}")
+            return True, None
+        except LlmChatException as e:
+            self.logger.error(f"File validation failed for {file_path}: {str(e)}")
+            raise e
+        except Exception as e:
+            err_msg = f"Unexpected error validating file {file_path}: {e}"
+            self.logger.error(err_msg)
+            raise LlmChatException(err_msg) from e
+
+
+    def extract_text_from_pdf_file(self, file_path: str, include_images: bool = False) -> Tuple[str, Dict[str, Any]]:
+        """
+        Extract text from PDF file.
+
+        Args:
+            file_path: Absolute path to the PDF file
+            include_images: If True, returns base64 encoded content including images
 
         Returns:
             Tuple of (content, metadata)
+
+        Raises:
+            LlmChatException: If PDF extraction fails
         """
-        self.logger.debug(f"Starting converting text file to string: {file_path}")
-
-        file_info = self.get_file_info(file_path)
-        encoding, confidence = self.detect_text_file_encoding(file_path)
-        mime_type = mimetypes.guess_type(file_path)[0]
-        encoding = "utf-8" if "ascii" in encoding else encoding # If Ascii encoding then use utf-8 to be safe.
-        self.logger.debug(f"Using encoding: {encoding} with confidence: {confidence} and mime_type: {mime_type}")
         try:
-            with open(file_path, 'r', encoding=encoding) as f:  # Opening file with detected encoding, hence only "r" and not "rb"
-                content = f.read()
-
-            metadata = {
-                "file_type": file_type,
-                'mime_type': mime_type,
-                "encoding": encoding,
-                "non_base64_length": len(content),
-                "base64_length": 0,
-                #"char_count": len(content),
-                "line_count": content.count('\n') + 1,
-                "success": True,
-                **file_info
-            }
-            self.logger.debug(f"Finished converting text file to string. mime_type: {mime_type} File: {file_path}")
-            return content, metadata
-
-        except Exception as e:
-            err_msg = f"Failed to read file {file_path} with encoding {encoding}: {e}"
-            self.logger.error(err_msg, exc_info=True)
-            raise LlmChatException(err_msg) from e
-            # return "", {
-            #     "error": f"Failed to read file: {e}",
-            #     "encoding_attempted": encoding,
-            #     **file_info
-            # }
-
-
-    # def _encode_file_to_base64(self, file_path: str, max_size: Optional[int] = None) -> Tuple[str, Dict[str, Any]]:
-    #     """Encode file to base64 string with metadata.
-    #     """
-    #     self.logger.debug(f"Start encoding file: {file_path} to base64")
-    #
-    #     file_info = self.get_file_info(file_path)
-    #
-    #     try:
-    #         with open(file_path, 'rb') as f:
-    #             binary_data = f.read()
-    #         base64_string = base64.b64encode(binary_data).decode('utf-8')
-    #
-    #         metadata = {
-    #             "content_length": len(base64_string),
-    #             "base64_length": len(base64_string),
-    #             "success": True,
-    #             **file_info
-    #         }
-    #         self.logger.debug(f"Finished encoding file: {file_path} to base64")
-    #         return base64_string, metadata
-    #     except Exception as e:
-    #         err_msg = f"Failed to encode file {file_path} to base64: {e}"
-    #         raise LlmChatException(err_msg) from e
-
-
-    def extract_base64_from_image_file(self, file_path: str,
-                                       file_type: str = "image") -> Tuple[str, Dict[str, Any]]:
-        """Universal base64 converter"""
-        self.logger.debug(f"Starting converting Image file: {file_path} to base64")
-        try:
-            image = Image.open(file_path).convert("RGB") # Some LLMs work well with RGB mode
-            buffered = io.BytesIO()
-            image.save(buffered, format="JPEG") # Converting to uniform format.
-            base64_string = base64.b64encode(buffered.getvalue()).decode("utf-8")
-            # Below is another way to get in base64 but may not work with some of the LLMs hence using the above
-            # even though the above is bit slower.
-            # with open(file_path, 'rb') as f:
-            #     binary_data = f.read()
-            #     base64_string = base64.b64encode(binary_data).decode('utf-8')
-
             file_info = self.get_file_info(file_path)
             mime_type = mimetypes.guess_type(file_path)[0]
+            
+            if include_images:
+                with open(file_path, 'rb') as f:
+                    content = base64.b64encode(f.read()).decode('utf-8')
+                    content_type = 'base64'
+            else:
+                with pymupdf.open(file_path) as doc:
+                    content = chr(12).join([page.get_text() for page in doc])
+                    content_type = 'text'
+            
             metadata = {
-                'file_type': file_type,
+                'file_type': 'pdf',
                 'mime_type': mime_type,
-                'non_base64_length': 0,
-                'base64_length': len(base64_string),
+                'content_type': content_type,
+                'content_length': len(content),
                 **file_info
             }
-            self.logger.debug(f"Finished converting Image file to base64. mime_type: {mime_type} File: {file_path}")
+            
+            self.logger.debug(f"Successfully extracted PDF content from {file_path}")
+            return content, metadata
+        except Exception as e:
+            err_msg = f"Failed to extract content from PDF {file_path}: {e}"
+            self.logger.error(err_msg)
+            raise LlmChatException(err_msg) from e
+
+
+    def convert_docx_to_text(self, file_path: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert DOCX file to text.
+
+        Args:
+            file_path: Absolute path to the DOCX file
+
+        Returns:
+            Tuple of (text_content, metadata)
+
+        Raises:
+            LlmChatException: If DOCX conversion fails
+        """
+        try:
+            document = Document(file_path)
+            text_content = "\n".join(paragraph.text for paragraph in document.paragraphs)
+            
+            file_info = self.get_file_info(file_path)
+            mime_type = mimetypes.guess_type(file_path)[0]
+            
+            metadata = {
+                'file_type': 'docx',
+                'mime_type': mime_type,
+                'content_length': len(text_content),
+                **file_info
+            }
+            
+            self.logger.debug(f"Successfully converted DOCX to text: {file_path}")
+            return text_content, metadata
+        except Exception as e:
+            err_msg = f"Failed to convert DOCX file {file_path}: {e}"
+            self.logger.error(err_msg)
+            raise LlmChatException(err_msg) from e
+
+
+    def convert_text_file(self, file_path: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert text file to LLM-ready format.
+
+        Args:
+            file_path: Absolute path to the text file
+
+        Returns:
+            Tuple of (content, metadata)
+
+        Raises:
+            LlmChatException: If text file conversion fails
+        """
+        try:
+            file_info = self.get_file_info(file_path)
+            encoding, confidence = self.detect_text_file_encoding(file_path)
+            mime_type = mimetypes.guess_type(file_path)[0]
+            
+            # Use UTF-8 for ASCII encoding to ensure compatibility
+            encoding = "utf-8" if "ascii" in encoding else encoding
+            
+            with open(file_path, 'r', encoding=encoding) as f:
+                content = f.read()
+            
+            metadata = {
+                'file_type': 'text',
+                'mime_type': mime_type,
+                'encoding': encoding,
+                'content_length': len(content),
+                'line_count': content.count('\n') + 1,
+                'success': True,
+                **file_info
+            }
+            
+            self.logger.debug(f"Successfully converted text file {file_path}")
+            return content, metadata
+        except Exception as e:
+            err_msg = f"Failed to convert text file {file_path}: {e}"
+            self.logger.error(err_msg)
+            raise LlmChatException(err_msg) from e
+
+
+    def convert_image_to_base64(self, file_path: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert image file to base64 string.
+
+        Args:
+            file_path: Absolute path to the image file
+
+        Returns:
+            Tuple of (base64_string, metadata)
+
+        Raises:
+            LlmChatException: If image conversion fails
+        """
+        try:
+            # Convert image to RGB mode and save as JPEG
+            image = Image.open(file_path).convert("RGB")
+            buffered = io.BytesIO()
+            image.save(buffered, format="JPEG")
+            base64_string = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            
+            file_info = self.get_file_info(file_path)
+            mime_type = mimetypes.guess_type(file_path)[0]
+            
+            metadata = {
+                'file_type': 'image',
+                'mime_type': mime_type,
+                'content_length': len(base64_string),
+                **file_info
+            }
+            
+            self.logger.debug(f"Successfully converted image to base64: {file_path}")
             return base64_string, metadata
         except Exception as e:
-            err_msg = f"Failed to convert file {file_path} to base64: {e}"
+            err_msg = f"Failed to convert image {file_path} to base64: {e}"
             self.logger.error(err_msg)
             raise LlmChatException(err_msg) from e
 
 
     def get_file_type(self, file_path: str) -> Tuple[Optional[str], Optional[str]]:
         """
-        Returns whether a file is text or pdf or image file. Modify this code as add Additional file types like Audio, PPT etc..
+        Determine file type based on extension.
+
+        Args:
+            file_path: Absolute path to the file
+
+        Returns:
+            Tuple of (file_type, mime_type)
         :param file_path: path can be absolute path or just file name
         :return: Tuple of file type (text, pdf, image) and mime-type
         """
