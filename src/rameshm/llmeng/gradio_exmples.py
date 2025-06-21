@@ -97,6 +97,29 @@ def llm_chat_example():
     gr.load_chat("http://localhost:11434/v1/", model="llama3.2", token="ollama").launch()
     gr.load_chat("http://localhost:11434/v1/", model="gemma3:1b", token="ollama").launch()
 
+# An example where we define a function within gr.Block.
+# THIS DOESN'T WORK because it is referencing Functions that aren't included in this example
+
+with gr.Blocks() as ui:
+    with gr.Row():
+        chatbot = gr.Chatbot(height=500, type="messages")
+        image_output = gr.Image(height=500)
+    with gr.Row():
+        entry = gr.Textbox(label="Chat with our AI Assistant:")
+    with gr.Row():
+        clear = gr.Button("Clear")
+
+    def do_entry(message, history):
+        history += [{"role":"user", "content":message}]
+        return "", history
+
+    entry.submit(do_entry, inputs=[entry, chatbot], outputs=[entry, chatbot]).then(
+        chat, inputs=chatbot, outputs=[chatbot, image_output]
+    )
+    clear.click(lambda: None, inputs=None, outputs=chatbot, queue=False)
+
+#ui.launch(inbrowser=True)
+
 def main(function_name: str):
     if function_name == "greet":
         demo_greet.launch()
