@@ -22,11 +22,9 @@ logger = set_environment_logger()
 def set_chat_selector_drop_down(chat_list: Dict[int, LlmChat], current_chat_id: Optional[int] = None) -> gr.Dropdown:
     """
     Set the chat selector dropdown with chat names and IDs.
-
     Args:
         chat_list: Dictionary of LlmChat objects with chat_id as keys
         current_chat_id: Optional current chat ID to set as selected
-
     Returns:
         Gradio Dropdown component with updated choices
     """
@@ -42,12 +40,10 @@ def set_chat_selector_drop_down(chat_list: Dict[int, LlmChat], current_chat_id: 
 def extract_from_gr_state_with_type_check(state_obj: Any, expected_type: type, default: Any = None) -> Any:
     """
     Extract value from State and ensure it's the expected type.
-
     Args:
         state_obj: Gradio State object or other Python object
         expected_type: Expected type of the contained value
         default: Default value if type doesn't match or extraction fails
-
     Returns:
         The extracted value if it matches expected_type, otherwise default
     """
