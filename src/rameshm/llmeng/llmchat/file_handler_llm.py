@@ -121,7 +121,7 @@ class FileToLLMConverter:
         file_extension = Path(file_path).suffix.lower()
 
         # Check if file type is supported
-        if file_extension not in chat_constants.get_supported_file_types_as_str():
+        if not chat_constants.get_file_type_from_extension(file_extension):
             self.logger.warning(f"Unsupported file type: {file_extension} for {file_path}")
             return False
 
@@ -130,16 +130,30 @@ class FileToLLMConverter:
         mime_type_binary, confidence_binary = self.detect_non_text_file_type(file_path)
         encoding, confidence_text = self.detect_text_file_encoding(file_path)
         confidence = max(confidence_binary, confidence_text)
-        self.logger.debug(f"Detected text encoding: {encoding} with confidence: {confidence} "
+        self.logger.debug(f"Identified Types: text encoding: {encoding} with confidence: {confidence} "
                           f"and Binary Mime Type: {mime_type_binary} and Binary Confidence: {confidence_binary}")
 
-        # Validate based on file type
-        if "text" in mime_type:
+        # Determine the primary content type based on detection confidence
+        if confidence_text >= confidence_binary and encoding:  # Prioritize text if confidence is higher or equal
+            detected_content_type = "text"
+            actual_mime_type = f"text/{encoding.lower()}"  # More specific text mime type
             is_valid = confidence_text >= confidence_threshold
-            self.logger.debug(f"Text file validation: confidence={confidence_text}, threshold={confidence_threshold}")
+            self.logger.debug(
+                f"Content-based text validation: encoding={encoding}, confidence={confidence_text}, threshold={confidence_threshold}")
+        elif mime_type_binary:  # Fallback to binary detection
+            detected_content_type = "binary"
+            actual_mime_type = mime_type_binary
+            is_valid = confidence_binary >= confidence_threshold
+            self.logger.debug(
+                f"Content-based binary validation: mime={mime_type_binary}, confidence={confidence_binary}, threshold={confidence_threshold}")
         else:
-            is_valid = mime_type == mime_type_binary and confidence_binary >= confidence_threshold
-            self.logger.debug(f"Binary file validation: confidence={confidence_binary}, threshold={confidence_threshold}")
+            is_valid = False  # No confident detection
+            self.logger.warning(f"No confident content type detected for {file_path}")
+
+        # Optionally, add a check for consistency with extension-based guess. This should never unless the content is different from extension type
+        if is_valid and mime_type and not actual_mime_type.startswith(mime_type.split('/')[0]):
+            self.logger.warning(f"Content type ({actual_mime_type}) inconsistent with extension guess ({mime_type}) for {file_path}")
+            is_valid = False
 
         if not is_valid:
             self.logger.warning(f"File validation failed for {file_path}: confidence={confidence} < threshold={confidence_threshold}")
@@ -153,33 +167,44 @@ class FileToLLMConverter:
             file_path: Absolute path to the file
         Returns:
             Tuple of (is_valid, error_message)
-
-        Raises:
-            LlmChatException: If file validation fails
         """
         self.logger.debug(f"Validate File: {file_path}")
         file_info = self.get_file_info(file_path)
 
         # Basic file existence and type checks
         if not os.path.exists(file_path):
-            raise LlmChatException(f"File not found: {file_path}")
+            return False, f"File not found: {file_path}"
 
         if not os.path.isfile(file_path):
-            raise LlmChatException(f"Path is not a file: {file_path}")
+            return False, f"Path is not a file: {file_path}"
 
         if file_info['size_bytes'] <= 0:
-            raise LlmChatException(f"File is empty: {file_path}")
+            return False, f"File is empty: {file_path}"
 
         # File type validation
-        if file_info['extension'].lower() not in chat_constants.get_supported_file_types_as_str():
-            raise LlmChatException(f"Unsupported file type: {file_info['extension']}")
+        if not chat_constants.get_file_type_from_extension(file_info['extension'].lower()):
+            return False, f"Unsupported file type: {file_info['extension']}"
 
         # Content validation
         if not self.is_valid_file_type(file_path, chat_constants.get_file_detection_confidence_needed()):
-            raise LlmChatException(f"Invalid file content for: {file_path}")
+            return False, f"Invalid file content for: {file_path}"
 
         self.logger.info(f"File validation passed for {file_path}: {file_info}")
         return True, None
+
+    def _create_common_metadata(self, file_path: str, file_type: str, content: str,
+                                extra_info: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        file_info = self.get_file_info(file_path)
+        mime_type = mimetypes.guess_type(file_path)[0]
+        metadata = {
+            'file_type': file_type,
+            'mime_type': mime_type,
+            'content_length': len(content),
+            **file_info
+        }
+        if extra_info:
+            metadata.update(extra_info)
+        return metadata
 
 
     def extract_text_from_pdf_file(self, file_path: str, include_images: bool = False, file_type: str = "pdf") -> Tuple[str, Dict[str, Any]]:
@@ -204,16 +229,10 @@ class FileToLLMConverter:
                 content_type = 'base64'
         else:
             with pymupdf.open(file_path) as doc:
-                content = chr(12).join([page.get_text() for page in doc])
+                content = "\n--- Page Break ---\n".join([page.get_text() for page in doc])
                 content_type = 'text'
 
-        metadata = {
-            'file_type': file_type,
-            'mime_type': mime_type,
-            'content_type': content_type,
-            'content_length': len(content),
-            **file_info
-        }
+        metadata = self._create_common_metadata(file_path, file_type, content, {'content_type': content_type})
 
         self.logger.debug(f"Successfully extracted PDF content from {file_path}")
         return content, metadata
@@ -234,15 +253,7 @@ class FileToLLMConverter:
         document = Document(file_path)
         text_content = "\n".join(paragraph.text for paragraph in document.paragraphs)
 
-        file_info = self.get_file_info(file_path)
-        mime_type = mimetypes.guess_type(file_path)[0]
-
-        metadata = {
-            'file_type': file_type,
-            'mime_type': mime_type,
-            'content_length': len(text_content),
-            **file_info
-        }
+        metadata = self._create_common_metadata(file_path, file_type, text_content)
 
         self.logger.debug(f"Successfully converted DOCX to text: {file_path}")
         return text_content, metadata
@@ -269,16 +280,9 @@ class FileToLLMConverter:
 
         with open(file_path, 'r', encoding=encoding) as f: # Not "rb" because encoding is specified.
             content = f.read()
-
-        metadata = {
-            'file_type': file_type,
-            'mime_type': mime_type,
-            'encoding': encoding,
-            'content_length': len(content),
-            'line_count': content.count('\n') + 1,
-            'success': True,
-            **file_info
-        }
+        metadata = self._create_common_metadata(file_path, file_type, content,
+                                                {'encoding': encoding, 'line_count': content.count('\n') + 1,
+                                                 'success': True})
 
         self.logger.debug(f"Successfully converted text file {file_path}")
         return content, metadata
@@ -297,21 +301,14 @@ class FileToLLMConverter:
         """
         self.logger.debug(f"Convert image file to base64 string for File: {file_path}")
 
-        # Convert image to RGB mode and save as JPEG
+        # Convert image to RGB and save as JPEG to standardize the format and
+        # ensure compatibility with models. This is a lossy conversion.
         image = Image.open(file_path).convert("RGB")
         buffered = io.BytesIO()
         image.save(buffered, format="JPEG")
         base64_string = base64.b64encode(buffered.getvalue()).decode("utf-8")
 
-        file_info = self.get_file_info(file_path)
-        mime_type = mimetypes.guess_type(file_path)[0]
-
-        metadata = {
-            'file_type': file_type,
-            'mime_type': mime_type,
-            'content_length': len(base64_string),
-            **file_info
-        }
+        metadata = self._create_common_metadata(file_path, file_type, base64_string)
 
         self.logger.debug(f"Successfully converted image to base64: {file_path}")
         return base64_string, metadata
@@ -327,18 +324,14 @@ class FileToLLMConverter:
         """
         mime_type = mimetypes.guess_type(file_path)[0]
         file_ext = Path(file_path).suffix.lower()
-        file_type = None
-        for k, v in chat_constants.get_supported_file_types().items():
-            if file_ext in chat_constants.get_supported_file_types()[k]:
-                file_type = k
+        file_type = chat_constants.get_file_type_from_extension(file_ext)
 
-        if file_type:
-            return file_type, mime_type
-        else:
+        if not file_type:
             err_msg = f"Unsupported file type: {file_ext} for file: {file_path}"
             self.logger.warning(err_msg)
             return None, mime_type
 
+        return file_type, mime_type
 
     def convert_file_to_str(self, file_path: str, check_file_validity: bool = False,
                             include_images_in_pdf = False) -> Tuple[str, Dict[str, Any]]:
