@@ -22,6 +22,12 @@ my_theme = gr.themes.Default(
     text_size=gr.themes.sizes.text_md
 )
 
+# Prepare model choices and a robust default
+model_names = sorted([model['model_nm'] for model in chat_constants.MODEL_ATTRIBUTES])
+# Ensure the default value is always valid
+default_model = "llama3.2" if "llama3.2" in model_names else model_names[0] if model_names else None
+
+# Create the Gradio app
 with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model_chat:
     # State variables for chat management
     current_chat_id = gr.State(None)    # Store current chat ID
@@ -62,7 +68,7 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
 
             model_selector = gr.Dropdown(
                 choices=sorted([model['model_nm'] for model in chat_constants.MODEL_ATTRIBUTES]),
-                value="llama3.2",
+                value=default_model,
                 label="🤖 LLM Model",
                 interactive=True
             )
@@ -132,7 +138,6 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
     model_selector.select(
         fn=gr_event_handler.start_new_chat,
         inputs=[chat_list, model_selector],
-        # file_upload is deliberately not refreshed so that other models can use the same files
         outputs=[chatbot, chat_history, user_input, system_message, current_chat_id, chat_selector, file_upload]
     )
 
@@ -150,7 +155,7 @@ with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model
 
     delete_chat_btn.click(
         fn=gr_event_handler.delete_selected_chat,
-        inputs=[chat_selector,chat_list, user_input, current_chat_id],
+        inputs=[chat_selector,chat_list, user_input, current_chat_id, model_selector],
         outputs=[chatbot, chat_history, user_input, system_message, current_chat_id, chat_selector, file_upload]
     )
 
