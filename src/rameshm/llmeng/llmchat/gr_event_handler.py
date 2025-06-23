@@ -188,8 +188,6 @@ def get_chat_nm_list(chat_list: Any) -> List[tuple[str, int]]:
     # This method is called directly either from the UI or from the predict function. Need to ensure that the chat_list is a dictionary
     chat_list = extract_from_gr_state_with_type_check(chat_list, dict, {})
     chat_list_sorted = {k: chat_list[k] for k in sorted(chat_list.keys())} # Latest chat listed first
-    for k, llm_chat in chat_list_sorted.items():
-        print(f"****DEBUG 78f8j8**** Chat List Contents: Key: {k}, Title: {llm_chat.get_chat_title()}, Model: {llm_chat.get_model_nm()}")
     return [(llm_chat.get_chat_title(), k) for k, llm_chat in chat_list_sorted.items()]
 
 
@@ -245,7 +243,8 @@ def validate_uploaded_files(file_paths_uploaded: List[str]) -> Tuple[List[str], 
                 err_msg_outer += err_msg
 
         # Exclude all invalid files from the upload eligible list
-        included_files = [file_path for file_path in included_files if file_path not in excluded_files]
+        excluded_file_paths = {item["file"] for item in excluded_files}  # Use a set for efficient lookup
+        included_files = [file_path for file_path in included_files if file_path not in excluded_file_paths]
         logger.debug(f"After validation following files are being included for sending to LLM: {included_files}")
         logger.info(f"Out of a total of {len(file_paths_uploaded)} uploaded, {len(included_files)} number of files are being sent to LLM.")
         if len(excluded_files) > 0:
@@ -282,10 +281,10 @@ def build_content_from_uploaded_files(file_paths_validated: List[str],
     file_contents = []
 
     logger.debug(f"Started building content of message for Validated file count of: {len(file_paths_validated)}")
+    file_handler_llm = FileToLLMConverter()
     for index, file_path in enumerate(file_paths_validated):
         file_nm = os.path.basename(file_path)
         logger.debug(f"Started building content of message for file: {file_path}")
-        file_handler_llm = FileToLLMConverter()
         file_data_text, file_meta_data = file_handler_llm.convert_file_to_str(file_path, check_file_validity,
                                                                               include_images_in_pdf)
         # Print first characters of the file content
@@ -417,12 +416,13 @@ def predict(message: str, history: List, selected_model: str, system_message: st
         model = get_model(model_nm)
         logger.debug(f"Model initialized: {type(model).__name__}")
 
-        uploaded_file_content = processed_files = []
+        uploaded_file_content = []
+        processed_files = []
         ok_to_attach_files = model_supports_file_attachments(model_nm)
-        if ok_to_attach_files and type(file_paths_uploaded) == list and len(file_paths_uploaded) > 0:
+        if ok_to_attach_files and file_paths_uploaded:
             uploaded_file_content, processed_files = process_uploaded_files(file_paths_uploaded, model_nm)
             not_processed_files = [file_path for file_path in file_paths_uploaded if file_path not in processed_files]
-            if type(not_processed_files) == list and len(not_processed_files) > 0:
+            if not_processed_files:
                 err_msg = (f"Following files were not processed. Please check the following: "
                            f"1) File contents and file extensions match 2) Total size of files uploaded is less then 20MB"
                            f"3) That the files exist. Resubmit once corrected")
@@ -498,7 +498,7 @@ def get_file_upload_object(model_nm: str = None) -> gr.File:
     if model_nm.strip():
         # Set file-upload to the right set of files that can be uploaded and appropriately set the label to indicate the same
         file_types_supported = chat_constants.get_model_supported_file_types(model_nm)
-        file_upload_label = "Upload Files( " + chat_constants.get_model_attributes(model_nm)
+        file_upload_label = "Upload Files: " + chat_constants.get_model_attributes(model_nm)
 
         if len(file_types_supported) > 0:
             file_upload = gr.File(label=file_upload_label, file_types= file_types_supported, interactive=True, value=None)
@@ -563,7 +563,8 @@ def load_selected_chat(chat_id: str, chat_list: Dict[int, LlmChat]) -> Tuple[Lis
 
 
 # TODO: Good idea to have a confirmation dialog before deleting the chat.
-def delete_selected_chat(delete_chat_id: str, chat_list: Dict[int, LlmChat], user_input, current_chat_id) -> Tuple[List, List, str, str, Optional[int], gr.Dropdown, gr.File]:
+def delete_selected_chat(delete_chat_id: str, chat_list: Dict[int, LlmChat], user_input, current_chat_id,
+                         model_selected: str) -> Tuple[List, List, str, str, Optional[int], gr.Dropdown, gr.File]:
     """Delete selected chat"""
     logger.info(f"Deleting chat ID: {delete_chat_id}")
     # Error response to be displayed in the Chat area if chat is not found or unexpected issue happens.
@@ -585,7 +586,8 @@ def delete_selected_chat(delete_chat_id: str, chat_list: Dict[int, LlmChat], use
             logger.warning(f"chat_id: {delete_chat_id} to be deleted is not found. No action taken.")
         if delete_chat_id == current_chat_id or current_chat_id is None:
             current_chat_id = None
-            return [], [], "", "", None, set_chat_selector_drop_down(chat_list, None), gr.File(value=""),
+            return ([], [], "", "", None, set_chat_selector_drop_down(chat_list, current_chat_id),
+                    get_file_upload_object(model_selected), )
         else:
             logger.info(f"chat_id {delete_chat_id} deleted, but it was not the current chat. No action taken on current chat.")
             llm_chat = chat_list.get(current_chat_id, None)
@@ -593,14 +595,13 @@ def delete_selected_chat(delete_chat_id: str, chat_list: Dict[int, LlmChat], use
             model_nm = llm_chat.get_model_nm()
             system_message = llm_chat.system_message
             return (history, history, user_input, system_message, current_chat_id, set_chat_selector_drop_down(chat_list, current_chat_id),
-                    get_file_upload_object(model_nm))
+                    get_file_upload_object(model_nm), )
     except Exception as e:
         # Just in the rare case exception happens. Just reset things so that user can retry.
         err_msg = f"Error loading chat_id: {delete_chat_id}: {str(e)}"
         logger.error(err_msg, exc_info=True)
         return err_response, [], "", "", None, set_chat_selector_drop_down(chat_list, None), gr.File(value="")
         #raise LlmChatException(err_msg) from e
-
 
 # Launch configuration
 # if __name__ == "__main__":
