@@ -1,4 +1,4 @@
-from typing import List, Dict, Tuple, Any
+from typing import List, Dict, Optional, Tuple, Any
 
 FILE_DETECTION_CONFIDENCE_LEVEL_NEEDED = 0.6
 MAX_COMBINED_SIZE_OF_FILES_UPLOADED = 104*1024*20   # 20MB as max limit for total size of all uploaded files.
@@ -30,6 +30,30 @@ SUPPORTED_FILE_TYPES = {
     "ms-wordx": ['.docx'],
     "ms-excelx": ['.xlsx']
     }
+
+
+# Pre-compute a reverse map from extension to file type (e.g., '.pdf' -> 'pdf')
+_extension_to_type_map = {
+    ext: type_name
+    for type_name, exts in SUPPORTED_FILE_TYPES.items()
+    for ext in exts
+}
+
+
+def get_file_type_from_extension(extension: str) -> Optional[str]:
+    """Gets the file category ('text', 'image', etc.) from an extension."""
+    return _extension_to_type_map.get(extension.lower())
+
+
+# Pre-compute a set of all supported extensions for efficient O(1) lookups
+_all_supported_extensions = {
+    ext for ext_list in SUPPORTED_FILE_TYPES.values() for ext in ext_list
+}
+
+def get_all_supported_extensions() -> set:
+    """Returns a set of all supported file extensions for quick lookups."""
+    return _all_supported_extensions
+
 
 # Define some utility methods.
 def get_model_attributes(model_nm: str = None) -> Any:
@@ -93,6 +117,3 @@ def get_model_supported_file_types(model_nm):
         pass
 
     return file_extensions_supported
-
-
-
