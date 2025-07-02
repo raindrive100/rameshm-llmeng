@@ -10,6 +10,7 @@ Log Setting to be used by all the modules
 
 #imports
 import logging
+from logging import config as logging_config
 import os
 from rameshm.llmeng.utils import set_environment
 
@@ -19,9 +20,7 @@ class MyLogger:
         """
         Initialize the logger with a default or provided log file name.
         """
-        self.log_file_nm = log_file_nm or os.path.join(
-            os.getenv("LLM_LOG_DIR"), os.getenv("LLM_LOG_FILE_NM")
-            )
+        self.log_file_nm = log_file_nm or os.getenv("LLM_LOG_FILE")
         print(f"Log File: {self.log_file_nm}")
         
     def get_logger(self, name: str) -> logging.Logger: # We need to initialize the logger with made it required
@@ -29,7 +28,7 @@ class MyLogger:
         Configure and return a logger with the specified name.
         """
         log_config = self.__get_log_config()
-        logging.config.dictConfig(log_config)
+        logging_config.dictConfig(log_config)
         return logging.getLogger(name)
             
     def __get_log_config(self) -> dict:
