@@ -196,4 +196,5 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Error in the App: {e}", exc_info=True)
 
-    multi_model_chat.launch(inbrowser=True)
+    #multi_model_chat.launch(inbrowser=True)
+    multi_model_chat.launch(server_name="0.0.0.0", server_port=7860)
