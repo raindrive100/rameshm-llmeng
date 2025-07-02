@@ -10,14 +10,14 @@ COPY requirements_llmchat.txt requirements.txt
 # Install Python packages from requirements.txt
 # Using cache mount with BuildKit (optional but recommended)
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir --target=/app/libs -r requirements.txt && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Copy the application code
 COPY src/ /app/src/
 
 # Add /app to PYTHONPATH so Python can find your custom packages
-ENV PYTHONPATH="${PYTHONPATH}:/app/src"
+ENV PYTHONPATH="${PYTHONPATH}:/app/src:/app/libs"
 
 # Copy secrets file (if necessary - reconsider this for production)
 COPY .env /app/secrets.env
