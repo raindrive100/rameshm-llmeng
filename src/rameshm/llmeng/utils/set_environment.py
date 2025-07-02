@@ -9,12 +9,34 @@ Loads environment variables for the llm_engineering project.
 import os
 from dotenv import load_dotenv
 
+
+def get_log_file(run_environment: str) -> str:
+    """ Takes in whether we are in DEV or Non-DEV environment and accordingly returns log file"""
+    if run_environment in ["PROD", "UAT", "QA"]:
+        # Get current working directory and create log subdirectory
+        current_dir = os.getcwd()
+        log_dir = os.path.join(current_dir, "log")
+        log_file = os.path.join(log_dir, "llmchat_log.txt")
+    else:
+        # Treat it as a DEV environment
+        log_dir = r"c:\temp"
+        log_file = os.path.join(log_dir, "llmchat_log.txt")
+
+    # Create log directory if it doesn't exist
+    os.makedirs(log_dir, exist_ok=True)
+
+    return log_file
+
+
 def set_my_environment():
     # Load the file containing Keys for multiple environments needed
     key_file = os.getenv("LLM_KEY_FILE")
+    print(f"DEBUG 78hj94j KeyFile is located at {key_file}")
     if not os.path.exists(key_file):
         raise FileNotFoundError(f"Key file not found: {key_file}")
     load_dotenv(key_file)
+
+    log_file = get_log_file(os.getenv("RUN_ENVIRONMENT"))
 
     os.environ.update({
         # gemini-2.5-pro is not supported for API version, hence excluded.
@@ -25,8 +47,8 @@ def set_my_environment():
         #"IMAGE_HANDLING_MODELS": ", ".join(["gpt-4o", "gpt-4o-mini", "claude-sonnet-4-0", "gemini-1.5-flash"]),
         "LLM_MY_LOGGER_NAME": "llm_engineering",
         "LLM_LOG_TO_FILE": "True",
-        "LLM_LOG_DIR": "c:\\temp",
-        "LLM_LOG_FILE_NM": "my_logs.txt",
+        #"LLM_LOG_DIR": log_dir,
+        "LLM_LOG_FILE": log_file,
         "LLM_LOG_FILE_MAX_BITE_SIZE": str(1024*1024*10), # 10MB Log File size then it rotates
         "LLM_LOG_FILE_BKUP_CNT": str(5),
         "LLM_APP_LOG_LEVEL": "DEBUG",
