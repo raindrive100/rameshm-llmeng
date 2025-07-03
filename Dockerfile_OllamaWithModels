@@ -1,0 +1,15 @@
+FROM ollama/ollama
+
+# Step 1: Start the Ollama server in the background
+# Step 2: Wait briefly for it to initialize (optional, but good practice for robustness)
+# Step 3: Run the ollama pull commands
+# Step 4: (Implicitly, the server process will be stopped when the RUN command finishes)
+RUN (ollama serve &) && \
+    # Give Ollama a moment to start up (adjust sleep if needed)
+    sleep 10 && \
+    ollama pull llama3.2:1b && \
+    ollama pull gemma3:1b
+    #ollama pull ai/llama3.2 &&  \
+    #ollama pull ai/gemma3:1b
+
+# Add more RUN ollama pull commands for other models
