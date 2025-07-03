@@ -97,12 +97,16 @@ def get_model(model_nm: str):
                              temperature=0.7, max_tokens=1024,top_p=0.9, top_k=40)
     elif "llama" in model_nm or "gemma" in model_nm:
         # Ollama run on "http://localhost:11434"  # Default Ollama URL. If you type that URL you shoud see "Ollama Running" message
+        # When built using Docker Compose Ollama runs as its own service and sets an environment OLLAMA_HOST. If that isn't defined
+        # then default to localhost.
+        ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
         return Ollama(model=model_nm, # api_key="ollama",base_url="http://localhost:11434",
-                      temperature=0.7, top_p=0.9, top_k=40, num_predict=256, repeat_penalty=1.1)
+                      base_url=ollama_host, temperature=0.7, top_p=0.9, top_k=40, num_predict=256, repeat_penalty=1.1)
     elif "gemini" in model_nm:
          return ChatGoogleGenerativeAI(model=model_nm, google_api_key=os.getenv("GOOGLE_API_KEY"), timeout=30)
     else:
         raise LlmChatException("Model: {model_nm} is not supported")
+
 
 def build_langchain_history(history: List, system_message: Optional[str]) -> List:
     """Build Langchain history from conversation history, system message, and user message"""
