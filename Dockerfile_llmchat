@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1.2 # Add this at the top if using BuildKit cache mounts
 FROM python:3.11.12-slim-bullseye
 
+# Set a build argument for the environment type, defaulting to PROD.
+ARG BUILD_ENV=PROD
+
 # Set the working directory
 WORKDIR /app
 
@@ -19,8 +22,7 @@ COPY src/ /app/src/
 # Add /app to PYTHONPATH so Python can find your custom packages
 ENV PYTHONPATH="${PYTHONPATH}:/app/src:/app/libs"
 
-# Copy secrets file (if necessary - reconsider this for production)
-COPY .env /app/secrets.env
+#COPY .env /app/secrets.env \
 
 # Copy the entrypoint script (if used with ENTRYPOINT)
 COPY entrypoint_llmchat.sh /entrypoint_llmchat.sh
