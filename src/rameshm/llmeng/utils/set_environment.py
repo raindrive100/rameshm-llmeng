@@ -29,12 +29,12 @@ def get_log_file(run_environment: str) -> str:
 
 
 def set_my_environment():
-    # Load the file containing Keys for multiple environments needed
+    # Load key File if one is listed. Failure to load Key File is not treated as error because it is possible that the
+    # required keys are loaded as part of environment (like in Kubernetes Secrets).
     key_file = os.getenv("LLM_KEY_FILE")
     print(f"DEBUG 78hj94j KeyFile is located at {key_file}")
-    if not os.path.exists(key_file):
-        raise FileNotFoundError(f"Key file not found: {key_file}")
-    load_dotenv(key_file)
+    if os.path.exists(key_file):
+        load_dotenv(key_file)
 
     log_file = get_log_file(os.getenv("RUN_ENVIRONMENT"))
 
