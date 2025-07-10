@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: llmchat-service
+  labels:
+    app: llmchat
+spec:
+  selector:
+    app: llmchat
+  ports:
+    - protocol: TCP
+      port: 7860 # The port you want to expose on the service
+      targetPort: 7860 # The port your container listens on
+  type: LoadBalancer # Exposes the service externally via a GCP Load Balancer

@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama-deployment
+  labels:
+    app: ollama
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ollama
+  template:
+    metadata:
+      labels:
+        app: ollama
+    spec:
+      # Define the init container
+      initContainers:
+      - name: init-model-puller
+        image: us-east4-docker.pkg.dev/myproject-07072025/llmengineering/ollama-only-full:latest # Or a smaller image with ollama binary
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            echo "Starting model pull..."
+            ollama serve & # Start ollama server in background
+            OLLAMA_PID=$!
+            sleep 10 # Give Ollama time to start
+            ollama pull llama3.2:1b
+            ollama pull gemma3:1b
+            kill $OLLAMA_PID || true # Terminate ollama process
+            echo "Model pull complete."
+        volumeMounts:
+        - name: ollama-models-storage
+          mountPath: /root/.ollama # Ensure this matches OLLAMA_MODELS in your Ollama config
+
+      # Main application container
+      containers:
+      - name: ollama
+        image: us-east4-docker.pkg.dev/myproject-07072025/llmengineering/ollama-only-full:latest # This image now only needs Ollama binary
+        command: ["ollama", "serve"]
+        ports:
+        - containerPort: 11434
+        env:
+        - name: OLLAMA_HOST
+          value: 0.0.0.0:11434
+        volumeMounts:
+        - name: ollama-models-storage
+          mountPath: /root/.ollama # Mount the same volume for the main container
+        resources: # <--- ADD THIS SECTION
+                  requests:
+                    cpu: "4"    # Request 4 CPU cores
+                    memory: "16Gi" # Request 16 GiB of memory
+                  limits:
+                    cpu: "6"    # Allow up to 6 CPU cores
+                    memory: "20Gi" # Allow up to 20 GiB of memory
+      volumes:
+      - name: ollama-models-storage
+        persistentVolumeClaim:
+          claimName: ollama-models-pvc # This PVC must be defined separately
