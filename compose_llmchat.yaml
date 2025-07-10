@@ -1,6 +1,4 @@
 # Building the llmchat and Ollama images.
-
-
 services:
   ollama:
     build:
@@ -25,7 +23,7 @@ services:
     container_name: llmchat
     restart: on-failure # Restart if your app crashes
     ports:
-      - "7860:7860" # Expose your Gradio app port to the host
+      - "7860:7860" # Expose Gradio app port to the host
     depends_on:
       - ollama # Ensure Ollama starts before your app
     # Your app will connect to Ollama using http://ollama:11434
