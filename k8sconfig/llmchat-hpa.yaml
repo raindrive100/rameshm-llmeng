@@ -1,0 +1,18 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: llmchat-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: llmchat-deployment # This targets your Ollama Deployment
+  minReplicas: 1 # minimum of 1 pod
+  maxReplicas: 3 # maximum of 3 pods
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70 # Scale up if average CPU utilization exceeds 70%
