@@ -14,7 +14,7 @@ from google import genai
 # import internal packages
 from rameshm.llmeng.utils import init_utils
 
-class LLM_Instance:
+class LlmInstance:
     
     def __init__(self, llm_model_nm: str):
         self.llm_model_nm = llm_model_nm
@@ -51,7 +51,7 @@ if __name__ == "__main__":
 
     for llm_model_nm in llm_model_list:
        print(f"Creating LLM Model: {llm_model_nm}")
-       llm_instance = LLM_Instance(llm_model_nm)
+       llm_instance = LlmInstance(llm_model_nm)
        llm_model_instance = llm_instance.get_llm_model_instance()
        if any(model in llm_model_nm for model in ["llama", "gpt", "gemma"]): #("llama" in llm_model_nm or "gpt" in llm_model_nm or "gemma" in llm_model_nm):
            messages = [
