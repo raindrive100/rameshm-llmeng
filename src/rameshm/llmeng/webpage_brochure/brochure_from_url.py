@@ -13,8 +13,8 @@ from typing import Optional
 import re
 
 # import internal packages
-from rameshm.llmeng.website import Website
-from rameshm.llmeng.create_llm_instance import LLM_Instance
+from rameshm.llmeng.webpage_brochure.website import Website
+from rameshm.llmeng.webpage_brochure.create_llm_instance import LlmInstance
 from rameshm.llmeng.utils import init_utils
 
 """ Initialize the logger and sets environment variables"""
@@ -60,7 +60,7 @@ def get_links_message(website: Website) -> list[dict[str, str]]:
     logger.debug(f"Link System Prompt: {links_message}")
     return links_message
 
-def get_links(website: Website, llm_instance: LLM_Instance) -> dict[str, list[dict[str, str]]]:
+def get_links(website: Website, llm_instance: LlmInstance) -> dict[str, list[dict[str, str]]]:
     """ Using LLM returns all relevant links contained in URL used in creating the Website instance. """
     response = llm_instance.get_llm_model_instance().chat.completions.create(
         model = llm_instance.get_llm_model_name(),
@@ -73,7 +73,7 @@ def get_links(website: Website, llm_instance: LLM_Instance) -> dict[str, list[di
     logger.debug(f"get_links Content is: {content}")
     return content
     
-def get_all_linked_details(website: Website, llm_instance: LLM_Instance) -> str:
+def get_all_linked_details(website: Website, llm_instance: LlmInstance) -> str:
     """ Returns contents for list of URLs within the original landing page URL passed in. """
     all_content = f"Content for Landing Page URL: {website.url} is: {website.get_contents()}\n"
     all_content += "\nContent from embedded links:\n"
@@ -110,7 +110,7 @@ def get_brochure_system_prompt() -> str:
     logger.debug(f"Link System Prompt: {brochure_system_prompt}")
     return brochure_system_prompt
 
-def get_brochure_user_prompt(website: Website, llm_instance: LLM_Instance, prompt_lmt: Optional[int] = None) -> str:
+def get_brochure_user_prompt(website: Website, llm_instance: LlmInstance, prompt_lmt: Optional[int] = None) -> str:
     """ Returns User prompt for preparing Brochure based on the data from all the links. """
     company_nm = website.url.split("//")[1].split(".")[0].capitalize() # Get's company name immediately following http:// and before .com etc.
     
@@ -128,7 +128,7 @@ def get_brochure_user_prompt(website: Website, llm_instance: LLM_Instance, promp
 def create_brochure(url: str, llm_model_nm: str) -> str:
     """ Returns the text of Brochure being returned by the LLM. """
     website = Website(url)
-    llm_instance = LLM_Instance(llm_model_nm)
+    llm_instance = LlmInstance(llm_model_nm)
     system_prompt = get_brochure_system_prompt()
     user_prompt = get_brochure_user_prompt(website, llm_instance, 20_000)
     logger.debug(f"Brochure Truncated User Prompt: {user_prompt}")
