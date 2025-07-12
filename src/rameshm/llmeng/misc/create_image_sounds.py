@@ -1,8 +1,6 @@
 import base64
 from io import BytesIO
 from PIL import Image
-from pydub import AudioSegment
-from pydub.playback import play
 import gradio as gr
 from rameshm.llmeng.create_llm_instance import LLM_Instance
 
