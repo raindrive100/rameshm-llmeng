@@ -25,7 +25,7 @@ my_theme = gr.themes.Default(
 # Prepare model choices and a robust default
 model_names = sorted([model['model_nm'] for model in chat_constants.MODEL_ATTRIBUTES])
 # Ensure the default value is always valid
-default_model = "llama3.2" if "llama3.2" in model_names else model_names[0] if model_names else None
+default_model = "llama3.2:1b" if "llama3.2:1b" in model_names else model_names[0] if model_names else None
 
 # Create the Gradio app
 #with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model_chat:
