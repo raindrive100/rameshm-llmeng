@@ -1,0 +1,38 @@
+# Building the llmchat and Ollama images.
+services:
+  ollama:  # service for Ollama with pre-downloaded models
+    build:
+      context: .. # Adjust context to the parent directory where ollama-with-models.Dockerfile is located
+      dockerfile: docker-files/ollama-with-models.Dockerfile
+      no_cache: false
+    image: ollama-with-models:2.0.0
+    container_name: ollama
+    restart: always
+    ports:
+      - "11434:11434"
+    # Persist models, mount a volume
+    volumes:
+      - ollama_models:/root/.ollama
+  llmchat:  # service for your LLM chat application
+    build:
+      context: ..   # Adjust context to the parent directory where llmchat.Dockerfile is located
+      dockerfile: docker-files/llmchat.Dockerfile
+      no_cache: false
+      pull: false
+    image: llmchat:2.0.0
+    container_name: llmchat
+    restart: on-failure # Restart if your app crashes
+    ports:
+      - "7860:7860" # Expose Gradio app port to the host
+    depends_on:
+      - ollama # Ensure Ollama starts before your app
+    # Your app will connect to Ollama using http://ollama:11434
+    environment:
+      # You can pass Ollama's URL as an environment variable to your app
+      OLLAMA_HOST: http://ollama:11434
+    volumes:
+      - ../.env:/app/secrets.env # Mount your .env file directly. Note the relative path
+      - C:\temp\llmchat_log.txt:/app/log/llmchat_log.txt
+
+volumes:
+  ollama_models: # Define the named volume for Ollama models

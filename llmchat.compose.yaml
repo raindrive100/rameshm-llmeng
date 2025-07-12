@@ -3,7 +3,7 @@ services:
   ollama:
     build:
       context: .
-      dockerfile: Dockerfile_OllamaWithModels
+      dockerfile: ollama-with-models.Dockerfile
       no_cache: false
     image: ollama-with-models:latest
     container_name: ollama
@@ -16,10 +16,10 @@ services:
   my_app:
     build:
       context: .
-      dockerfile: Dockerfile_llmchat
+      dockerfile: llmchat.Dockerfile
       no_cache: false
       pull: false
-    image: llmchat:latest
+    image: llmchat:2.0.0
     container_name: llmchat
     restart: on-failure # Restart if your app crashes
     ports:

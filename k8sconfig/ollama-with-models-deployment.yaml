@@ -9,6 +9,12 @@ spec:
   selector:
     matchLabels:
       app: ollama
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
   template:
     metadata:
       labels:

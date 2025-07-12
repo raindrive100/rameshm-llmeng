@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: llmchat-ingress
+  annotations:
+    # Optional: If you want a static external IP for the Ingress
+    # networking.gke.io/static-ip: your-static-ip-name
+    # Optional: For Google-managed SSL certificate
+    # networking.gke.io/managed-certificates: your-cert-name
+spec:
+  rules:
+  - http:
+      paths:
+      - path: / # Route all traffic to the root path
+        pathType: Prefix
+        backend:
+          service:
+            name: llmchat-service # Name of your LLMChat Service
+            port:
+              number: 7860 # Port of your LLMChat Service
+  # If you have an SSL certificate, add a TLS section
+  # tls:
+  # - hosts:
+  #   - your-domain.com
+  #   secretName: your-tls-secret # Name of the Secret containing your TLS cert and key

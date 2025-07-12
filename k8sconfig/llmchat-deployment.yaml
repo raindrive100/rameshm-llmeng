@@ -9,6 +9,12 @@ spec:
   selector:
     matchLabels:
       app: llmchat
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
   template:  # Pod definition starts
     metadata:
       labels:
