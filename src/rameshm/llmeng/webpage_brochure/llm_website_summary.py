@@ -9,14 +9,13 @@ HACK(s):
     2. The .env file from which the LLM Connection Key is sourced is set in KEY_FILE environment variable. Modify to read as argument.
     
 """
-from random import choices
 
 from google.genai import types
 import gradio as gr
 
 # import internal packages
-from rameshm.llmeng.website import Website
-from rameshm.llmeng.create_llm_instance import LLM_Instance
+from rameshm.llmeng.webpage_brochure.website import Website
+from rameshm.llmeng.webpage_brochure.create_llm_instance import LlmInstance
 from rameshm.llmeng.utils import init_utils
 
 # Initialize the logger and sets environment variables
@@ -46,7 +45,7 @@ def get_message(website: Website) -> list[dict[str, str]]:
         ]
 
 def gpt_response(user_prompt: str, llm_model_nm: str) -> str:
-    llm_instance = LLM_Instance(llm_model_nm)
+    llm_instance = LlmInstance(llm_model_nm)
     messages = [
         {"role": "system", "content": get_system_prompt()},
         {"role": "user", "content": "Is Java a popular programming language"}
@@ -59,7 +58,7 @@ def gpt_response(user_prompt: str, llm_model_nm: str) -> str:
     return response.choices[0].message.content
 
 def claude_response(user_prompt: str, llm_model_nm: str) -> str:
-    llm_instance = LLM_Instance(llm_model_nm)
+    llm_instance = LlmInstance(llm_model_nm)
     print(llm_instance.get_llm_model_instance())
     response = llm_instance.get_llm_model_instance().messages.create(
         model=llm_model_nm,
@@ -73,7 +72,7 @@ def claude_response(user_prompt: str, llm_model_nm: str) -> str:
     return response.content[0].text
 
 def gemini_response(user_prompt: str, llm_model_nm: str) -> str:
-    llm_instance = LLM_Instance(llm_model_nm)
+    llm_instance = LlmInstance(llm_model_nm)
 
     response = llm_instance.get_llm_model_instance().models.generate_content(
         model=llm_model_nm,
@@ -88,7 +87,7 @@ def gemini_response(user_prompt: str, llm_model_nm: str) -> str:
 def get_response(url: str, llm_model_nm: str) -> str:
     website = Website(url)
     user_prompt = get_user_prompt(website)
-    llm_instance = LLM_Instance(llm_model_nm)
+    llm_instance = LlmInstance(llm_model_nm)
     logger.debug(f"Model Name: {llm_model_nm} Processing URL: {url}\n\t User Prompt: {user_prompt}")
 
     if "gpt" in llm_model_nm or "llama" in llm_model_nm:
