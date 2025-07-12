@@ -4,15 +4,15 @@ FILE_DETECTION_CONFIDENCE_LEVEL_NEEDED = 0.6
 MAX_COMBINED_SIZE_OF_FILES_UPLOADED = 104*1024*20   # 20MB as max limit for total size of all uploaded files.
 MAX_CHAT_NAME_LENGTH=40 # Number of character long for chat name
 
-
 MODEL_ATTRIBUTES = [
     {"model_nm": "gpt-4o", "model_id": 1, "image_support": True, "raw_pdf_support": False, "text_pdf": True, "supports_file_attachments": True, "supported_types": "Text, Code, PDF, Images", },
     {"model_nm": "gpt-4o-mini", "model_id": 2, "image_support": False, "raw_pdf_support": False, "text_pdf": True, "supports_file_attachments": True, "supported_types": "Text, Code, PDF(Images Ignored)", },
     {"model_nm": "claude-sonnet-4-0", "model_id": 3, "image_support": True, "raw_pdf_support": True, "text_pdf": True,  "supports_file_attachments": True, "supported_types": "Text, Code, PDF, Images", },
     #{"model_nm": "claude-3-5-sonnet-2024102", "model_id": 4, "image_support": True, "raw_pdf_support": True, "text_pdf": True,  "supports_file_attachments": True, "supported_types": "Text, Code, PDF, Images", },
     {"model_nm": "gemini-1.5-flash", "model_id": 5, "image_support": True, "raw_pdf_support": True, "text_pdf": True,  "supports_file_attachments": True, "supported_types": "Text, Code, PDF, Images", },
-    {"model_nm": "llama3.2", "model_id": 6, "image_support": False, "raw_pdf_support": False, "text_pdf": True,  "supports_file_attachments": False, "supported_types": "Text, Code, PDF(Images Ignored)", },
-    {"model_nm": "llama3.4b", "model_id": 7, "image_support": False, "raw_pdf_support": False, "text_pdf": True,  "supports_file_attachments": False, "supported_types": "Text, Code, PDF(Images Ignored)", },
+    {"model_nm": "llama3.2:1b", "model_id": 6, "image_support": False, "raw_pdf_support": False, "text_pdf": True,  "supports_file_attachments": False, "supported_types": "Text, Code, PDF(Images Ignored)", },
+    {"model_nm": "gemma3:1b", "model_id": 6, "image_support": False, "raw_pdf_support": False, "text_pdf": True,  "supports_file_attachments": False, "supported_types": "Text, Code, PDF(Images Ignored)", },
+    #{"model_nm": "llama3.4b", "model_id": 7, "image_support": False, "raw_pdf_support": False, "text_pdf": True,  "supports_file_attachments": False, "supported_types": "Text, Code, PDF(Images Ignored)", },
     ]
 
 # The file extensions mentioned in TEXT_FILE_EXTENSIONS, SUPPORTED_FILE_TYPES are the file types that are supported.
@@ -30,7 +30,6 @@ SUPPORTED_FILE_TYPES = {
     "ms-wordx": ['.docx'],
     "ms-excelx": ['.xlsx']
     }
-
 
 # Pre-compute a reverse map from extension to file type (e.g., '.pdf' -> 'pdf')
 _extension_to_type_map = {
