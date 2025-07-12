@@ -71,22 +71,25 @@ def validate_inputs(message: str, history: List, model: str, system_message: str
         logger.error("Model must be selected. Please select a model.")
         return False, "Model must be selected. Please select a model."
 
-    # Check if required API keys are available
-    model_name = model.lower()
-    #  Ollama runs locally, so no API key is needed
-    if "gpt" in model_name and not os.getenv("OPENAI_API_KEY"):
-        msg = "OpenAI API key not found in environment variables"
-        logger.error(msg)
-        return False, msg
-    elif "claude" in model_name and not os.getenv("ANTHROPIC_API_KEY"):
-        msg = "Anthropic API key not found in environment variables"
-        logger.error(msg)
-        return False, msg
-    elif "gemini" in model_name and not os.getenv("GOOGLE_API_KEY"):
-        msg = "Google API key not found in environment variables"
-        logger.error(msg)
-        return False, msg
+    # Map model keywords to their required API key environment variables
+    # Ollama is local and doesn't require a key, so it's omitted.
+    api_key_requirements = {
+        "gpt": ("OPENAI_API_KEY", "OpenAI"),
+        "claude": ("ANTHROPIC_API_KEY", "Anthropic"),
+        "gemini": ("GOOGLE_API_KEY", "Google"),
+        #"llama": ("OLLAMA_API_KEY", "Ollama"),  # Ollama runs locally, so key is not need
+    }
+
+    model_name_lower = model.lower()
+    # Ollama runs locally, so no API key is needed
+    for keyword, (env_var, provider_name) in api_key_requirements.items():
+        if keyword in model_name_lower and not os.getenv(env_var):
+            msg = f"{provider_name} API key-{env_var} not found in environment variables"
+            logger.error(msg)
+            return False, msg
+
     return True, ""
+
 
 def get_model(model_nm: str):
     logger.debug(f"Generating model instance for model: {model_nm}")
@@ -207,55 +210,36 @@ def validate_uploaded_files(file_paths_uploaded: List[str]) -> Tuple[List[str], 
         Boolean: True if Fatal Error (further processing should stop). False if not fatal error
         err_msg: Any error message from validation
     """
-    logger.debug(f"Starting in validate_uploaded_files")
+    logger.debug("Starting validate_uploaded_files")
     file_handler_llm = FileToLLMConverter()
-    max_size_of_all_files_uploaded = chat_constants.get_max_combined_size_of_files_upload()
-    total_size_of_uploaded_file = 0
-    included_files = []
-    excluded_files = []
-    err_msg_outer = ""
+    max_size = chat_constants.get_max_combined_size_of_files_upload()
+    included_files = [f for f in file_paths_uploaded if os.path.isfile(f)]
+    total_size = sum(os.path.getsize(f) for f in included_files)
+    err_msgs = []
     fatal_error = False
 
-    # Check that the total size of all files doesn't exceed the defined max size.
-    for file_path in file_paths_uploaded:
-        if os.path.exists(file_path) and os.path.isfile(file_path):
-            total_size_of_uploaded_file += os.path.getsize(file_path)
-            included_files.append(file_path)
+    if total_size > max_size:
+        msg = f"FATAL ERROR: Total size {total_size} exceeds max allowed {max_size}. Delete some files."
+        logger.warning(msg)
+        return [], True, True, msg
+
+    valid_files = []
+    skipped_file_cnt = 0
+    for file_path in included_files:
+        is_valid, err_msg = file_handler_llm.is_valid_file(file_path)
+        if is_valid:
+            valid_files.append(file_path)
         else:
-            # Either file is missing or is not a file
-            excluded_files.append({"file": file_path, "Reason": "Is not a file or missing"})
-            err_msg = f"File: {file_path} is either not a file or missing. Ignoring from file upload."
-            logger.warning(err_msg)
-            err_msg_outer += err_msg + "\n"
-    if total_size_of_uploaded_file > max_size_of_all_files_uploaded:
-        # This is a no-no. To avoid costs and system issues. Stop processing.
-        err_msg = f"FATAL ERROR: Total size {total_size_of_uploaded_file} exceeds max_allowed_size of: {max_size_of_all_files_uploaded}. Delete some files"
-        logger.warning(err_msg)
-        err_msg_outer += err_msg + "\n"
-        fatal_error = True
-        return [], True, fatal_error, err_msg_outer # Indicates that the validation failed and that the error is a Fatal Error.
-    else:
-        # Uploaded files are within the limits.
-        # Check to make sure that each file is a file supported by the tool.
-        for index, file_path in enumerate(included_files):
-            file_is_valid, err_msg_file_validation = file_handler_llm.is_valid_file(file_path)
-            if not file_is_valid:
-                if not any(item["file"] == file_path for item in excluded_files):
-                    excluded_files.append({"file": file_path, "Reason": err_msg_file_validation})
-                err_msg = f"Validation failed with error message: {err_msg_file_validation} for File: {file_path}. File is NOT valid and is ignored.\n"
-                logger.warning(err_msg)
-                err_msg_outer += err_msg
+            skipped_file_cnt += 1
+            logger.warning(f"Skipping file {file_path}: {err_msg}")
+            err_msgs.append(f"{file_path}: {err_msg}")
 
-        # Exclude all invalid files from the upload eligible list
-        excluded_file_paths = {item["file"] for item in excluded_files}  # Use a set for efficient lookup
-        included_files = [file_path for file_path in included_files if file_path not in excluded_file_paths]
-        logger.debug(f"After validation following files are being included for sending to LLM: {included_files}")
-        logger.info(f"Out of a total of {len(file_paths_uploaded)} uploaded, {len(included_files)} number of files are being sent to LLM.")
-        if len(excluded_files) > 0:
-            logger.info(" Total of {len(excluded_files)} are being excluded")
+    logger.debug(f"After validation following files are being included for sending to LLM: {valid_files}")
+    logger.info(f"Out of a total of {len(file_paths_uploaded)} uploaded, "
+                f"skipping: {skipped_file_cnt}, Sending: {len(valid_files)} files are being sent to LLM.")
+    logger.debug("Finished validate_uploaded_files")
 
-        logger.debug(f"Finished uploaded file validation")
-        return included_files, False, fatal_error, err_msg_outer
+    return valid_files, False, False, "\n".join(err_msgs)
 
 
 def model_supports_file_attachments(model_nm: str) -> bool:
@@ -427,8 +411,10 @@ def predict(message: str, history: List, selected_model: str, system_message: st
             uploaded_file_content, processed_files = process_uploaded_files(file_paths_uploaded, model_nm)
             not_processed_files = [file_path for file_path in file_paths_uploaded if file_path not in processed_files]
             if not_processed_files:
-                err_msg = (f"Following files were not processed. Please check the following: "
-                           f"1) File contents and file extensions match 2) Total size of files uploaded is less then 20MB"
+                skipped_files = [os.path.basename(file_path) for file_path in not_processed_files]
+                err_file = "\n".join(skipped_files)
+                err_msg = (f"Following files were not processed: {err_file}. Please check the following: "
+                           f"1) File contents and file extensions match 2) Total size of files uploaded is less then 20MB "
                            f"3) That the files exist. Resubmit once corrected")
                 logger.warning(err_msg)
                 raise LlmChatException(err_msg)
