@@ -24,3 +24,5 @@ src/**/.idea/*
 src/rameshm/llmeng/misc/
 src/rameshm/llmeng/week1/
 src/rameshm/llmeng/*.py
+src/rameshm/llmeng/webpage-brochure/
+src/rameshm/llmeng/examples/

@@ -1,11 +1,11 @@
 # Building the llmchat and Ollama images.
 services:
-  ollama:
+  ollama:  # service for Ollama with pre-downloaded models
     build:
-      context: .
-      dockerfile: ollama-with-models.Dockerfile
+      context: .. # Adjust context to the parent directory where ollama-with-models.Dockerfile is located
+      dockerfile: docker-files/ollama-with-models.Dockerfile
       no_cache: false
-    image: ollama-with-models:latest
+    image: ollama-with-models:2.0.0
     container_name: ollama
     restart: always
     ports:
@@ -13,10 +13,10 @@ services:
     # Persist models, mount a volume
     volumes:
       - ollama_models:/root/.ollama
-  my_app:
+  llmchat:  # service for your LLM chat application
     build:
-      context: .
-      dockerfile: llmchat.Dockerfile
+      context: ..   # Adjust context to the parent directory where llmchat.Dockerfile is located
+      dockerfile: docker-files/llmchat.Dockerfile
       no_cache: false
       pull: false
     image: llmchat:2.0.0
@@ -31,7 +31,7 @@ services:
       # You can pass Ollama's URL as an environment variable to your app
       OLLAMA_HOST: http://ollama:11434
     volumes:
-      - .env:/app/secrets.env # Mount your .env file directly, or copy it if preferred
+      - ../.env:/app/secrets.env # Mount your .env file directly. Note the relative path
       - C:\temp\llmchat_log.txt:/app/log/llmchat_log.txt
 
 volumes:

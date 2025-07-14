@@ -1,4 +1,9 @@
 # syntax=docker/dockerfile:1.2 # Add this at the top if using BuildKit cache mounts
+# Dockerfile for LLM Chat Application
+# Use a lightweight Python image as the base
+# Important: The Context for this Dockerfile should be set to the parent directory of `src` and `requirements_llmchat.txt`.
+# This allows the Dockerfile to access the `src` directory and the requirements file. See the llmchat.compose.yml for context setting.
+
 FROM python:3.11.12-slim-bullseye
 
 # Set a build argument for the environment type, defaulting to PROD.
@@ -8,7 +13,7 @@ ARG BUILD_ENV=PROD
 WORKDIR /app
 
 # Copy the requirements file into the working directory
-COPY requirements_llmchat.txt requirements.txt
+COPY docker-files/requirements_llmchat.txt requirements.txt
 
 # Install Python packages from requirements.txt
 # Using cache mount with BuildKit (optional but recommended)
@@ -22,7 +27,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy the application code
-COPY ../src/ /app/src/
+COPY src/ /app/src/
 
 # Add /app to PYTHONPATH so Python can find your custom packages
 ENV PYTHONPATH="${PYTHONPATH}:/app/src:/app/libs"
@@ -36,7 +41,7 @@ COPY docker-files/entrypoint_llmchat.sh entrypoint_llmchat.sh
 EXPOSE 7860
 
 # Set entrypoint (if used with ENTRYPOINT)
-ENTRYPOINT ["entrypoint_llmchat.sh"]
+ENTRYPOINT ["/app/entrypoint_llmchat.sh"]
 
 # Set the command to run the Gradio app (using exec form)
 CMD ["python", "/app/src/rameshm/llmeng/llmchat/gr_ui.py"]
