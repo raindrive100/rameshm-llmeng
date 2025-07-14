@@ -25,10 +25,10 @@ spec:
         image: us-east4-docker.pkg.dev/myproject-07072025/llmengineering/llmchat:latest
         resources: # Define some resources. We don't need much because most of the work is done by LLMs.
           requests:
-            cpu: "2"    # Request 4 CPU cores
+            cpu: "2"    # Request 2 CPU cores
             memory: "8Gi" # Request 8 GiB of memory
           limits:
-            cpu: "4"    # Allow up to 6 CPU cores
+            cpu: "4"    # Allow up to 4 CPU cores
             memory: "16Gi" # Allow up to 16 GiB of memory
         ports:
         - containerPort: 7860 # Gradio app port
