@@ -1,25 +1,36 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: llmchat-ingress
+  name: llmeng-ingress
   annotations:
-    # Optional: If you want a static external IP for the Ingress
-    # networking.gke.io/static-ip: your-static-ip-name
-    # Optional: For Google-managed SSL certificate
-    # networking.gke.io/managed-certificates: your-cert-name
+    # Use GCE Ingress controller"
+    spec.ingressClassName: "gce"
+    #kubernetes.io/ingress.class: "gce"
+    networking.gke.io/managed-certificates: llmeng-managed-cert # Use the Managed Certificate created in llmeng-certificate.yaml
+    kubernetes.io/ingress.allow-http: "false" # Uncomment if you want to allow HTTP traffic
+    force-redeploy: "true"
 spec:
   rules:
-  - http:
+  - host: rameshmullangi.com # Replace with domain or nip.io address
+    http:
+    # - your-domain.com # Uncomment and set your domain if you have one
       paths:
-      - path: / # Route all traffic to the root path
+      - path: /llmchat # Route all traffic to the root path
         pathType: Prefix
         backend:
           service:
             name: llmchat-service # Name of your LLMChat Service
             port:
-              number: 7860 # Port of your LLMChat Service
-  # If you have an SSL certificate, add a TLS section
-  # tls:
-  # - hosts:
-  #   - your-domain.com
-  #   secretName: your-tls-secret # Name of the Secret containing your TLS cert and key
+              number: 7861 # This is the port on which the LLMChat Service defined in llmchat-service.yaml listens (ports.port entry)
+#      - path: /websitesummary # Route all traffic to the root path
+#        pathType: Prefix
+#        backend:
+#          service:
+#            name: websitesummary-service # Name of your LLMChat Service
+#            port:
+#              number: 7891 # This is the port on which the websitesummary-service
+  # If you have an SSL certificate that is user create, i.e. not created through GKE then add a TLS section
+#  tls:
+#  - hosts:
+#    - rameshmullangi.com # Replace with the same domain as above
+#    secretName: llmeng-managed-cert # Name of the secret containing SSL certificate
