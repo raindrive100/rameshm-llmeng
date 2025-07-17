@@ -1,14 +1,14 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ollama-deployment
+  name: ollama-app-deployment # Name of the Ollama app deployment
   labels:
-    app: ollama
+    app: ollama-app # Label for the Ollama app deployment
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ollama
+      app: ollama-pod # Match the label of the pods
   revisionHistoryLimit: 5
   strategy:
     type: RollingUpdate
@@ -18,11 +18,11 @@ spec:
   template:
     metadata:
       labels:
-        app: ollama
+        app: ollama-pod # Label for the pods created by this deployment
     spec:
       # Define the init container
       initContainers:
-      - name: init-model-puller
+      - name: ollama-init-model-puller-container # Name of the init container
         image: us-east4-docker.pkg.dev/myproject-07072025/llmengineering/ollama-only-full:latest # Or a smaller image with ollama binary
         command: ["/bin/sh", "-c"]
         args:
@@ -31,7 +31,7 @@ spec:
             ollama serve & # Start ollama server in background
             OLLAMA_PID=$!
             sleep 10 # Give Ollama time to start
-            ollama pull llama3.2:1b
+            ollama pull llama3.2
             ollama pull gemma3:1b
             kill $OLLAMA_PID || true # Terminate ollama process
             echo "Model pull complete."
@@ -41,7 +41,7 @@ spec:
 
       # Main application container
       containers:
-      - name: ollama
+      - name: ollama-container # Name of the main Ollama container
         image: us-east4-docker.pkg.dev/myproject-07072025/llmengineering/ollama-only-full:latest # This image now only needs Ollama binary
         command: ["ollama", "serve"]
         ports:
