@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: llmchat-deployment
+  name: llmchat-app-deployment
   labels:
-    app: llmchat
+    app: llmchat-app
 spec:
   replicas: 1 # Start with 1 replica for  LLMChat app
   #nodeSelector:
     #topology.kubernetes.io/zone: us-east4-a # <--- Add this
   selector:
     matchLabels:
-      app: llmchat
+      app: llmchat-pod # Match the label of the pods
   revisionHistoryLimit: 5
   strategy:
     type: RollingUpdate
@@ -20,10 +20,10 @@ spec:
   template:  # Pod definition
     metadata:
       labels:
-        app: llmchat
+        app: llmchat-pod # Label for the pods created by this deployment
     spec:
       containers:
-      - name: llmchat
+      - name: llmchat-container # Name of the container
         image: us-east4-docker.pkg.dev/myproject-07072025/llmengineering/llmchat:latest
         resources: # Define some resources. We don't need much because most of the work is done by LLMs.
           requests:
@@ -36,7 +36,7 @@ spec:
         - containerPort: 7860 # Gradio app port
         env: # You can still set this env var directly here
           - name: OLLAMA_HOST # Connection to ollama hosted models use this environment variable to connect to Ollama server
-            value: http://ollama-service:11434 # Reference the Ollama Kubernetes Service name
-        envFrom: # Loading a mount point of the environment file to keep code consistent between Dev and Prod.
+            value: http://ollama-service:11435 # Reference the Ollama Kubernetes Service name port
+        envFrom: # Loading a mount point of the envronment file to keep code consistent between Dev and Prod.
         - secretRef:
             name: llmeng-secrets # Inject environment variables from your .env secret
