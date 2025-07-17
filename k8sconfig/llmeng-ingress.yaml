@@ -7,8 +7,8 @@ metadata:
     spec.ingressClassName: "gce"
     #kubernetes.io/ingress.class: "gce"
     networking.gke.io/managed-certificates: llmeng-managed-cert # Use the Managed Certificate created in llmeng-certificate.yaml
-    kubernetes.io/ingress.allow-http: "false" # Uncomment if you want to allow HTTP traffic
-    force-redeploy: "true"
+    kubernetes.io/ingress.allow-http: "false" # Change to "true" if you want to allow HTTP traffic
+    #force-redeploy: "true"
 spec:
   rules:
   - host: rameshmullangi.com # Replace with domain or nip.io address
@@ -22,15 +22,3 @@ spec:
             name: llmchat-service # Name of your LLMChat Service
             port:
               number: 7861 # This is the port on which the LLMChat Service defined in llmchat-service.yaml listens (ports.port entry)
-#      - path: /websitesummary # Route all traffic to the root path
-#        pathType: Prefix
-#        backend:
-#          service:
-#            name: websitesummary-service # Name of your LLMChat Service
-#            port:
-#              number: 7891 # This is the port on which the websitesummary-service
-  # If you have an SSL certificate that is user create, i.e. not created through GKE then add a TLS section
-#  tls:
-#  - hosts:
-#    - rameshmullangi.com # Replace with the same domain as above
-#    secretName: llmeng-managed-cert # Name of the secret containing SSL certificate
