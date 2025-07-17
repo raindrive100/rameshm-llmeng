@@ -25,7 +25,7 @@ my_theme = gr.themes.Default(
 # Prepare model choices and a robust default
 model_names = sorted([model['model_nm'] for model in chat_constants.MODEL_ATTRIBUTES])
 # Ensure the default value is always valid
-default_model = "llama3.2:1b" if "llama3.2:1b" in model_names else model_names[0] if model_names else None
+default_model = "llama3.2" if "llama3.2" in model_names else model_names[0] if model_names else None
 
 # Create the Gradio app
 #with gr.Blocks(title="Multi-LLM Chatbot", theme=gr.themes.Soft()) as multi_model_chat:
@@ -198,4 +198,13 @@ if __name__ == "__main__":
         logger.error(f"Error in the App: {e}", exc_info=True)
 
     #multi_model_chat.launch(inbrowser=True)
-    multi_model_chat.launch(server_name="0.0.0.0", server_port=7860)
+    # Make the app accessible on localhost:7860/llmchat. Having /llmchat as root path is important for GKE (GCP) deployment
+    # The app_kwargs are used to set the forwarded_allow_ips and proxy_headers to True. This is important for the app to work correctly behind a reverse proxy (like Nginx) and to detect HTTPS correctly.
+    multi_model_chat.launch(server_name="0.0.0.0",
+                            server_port=7860,
+                            root_path="/llmchat",
+                            app_kwargs={
+                                "forwarded_allow_ips": "*",  # Trust proxy headers
+                                "proxy_headers": True  # Use X-Forwarded-Proto for HTTPS detection
+                            },
+                            )
