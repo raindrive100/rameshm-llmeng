@@ -11,7 +11,7 @@ FROM ollama/ollama
 RUN (ollama serve &) && \
     # Give Ollama a moment (10sec) to start up (adjust sleep if needed)
     sleep 10 && \
-    ollama pull llama3.2:1b && \
+    ollama pull llama3.2 && \
     ollama pull gemma3:1b && \
     kill $(pgrep ollama) || true # Gracefully stop Ollama server
     #ollama pull ai/llama3.2 &&  \
