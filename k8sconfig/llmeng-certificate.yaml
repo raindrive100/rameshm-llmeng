@@ -1,0 +1,7 @@
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: llmeng-managed-cert
+spec:
+  domains:
+    - rameshmullangi.com # My domain name
