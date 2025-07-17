@@ -11,8 +11,8 @@ MODEL_ATTRIBUTES = [
     #{"model_nm": "claude-3-5-sonnet-2024102", "model_id": 4, "image_support": True, "raw_pdf_support": True, "text_pdf": True,  "supports_file_attachments": True, "supported_types": "Text, Code, PDF, Images", },
     {"model_nm": "gemini-1.5-flash", "model_id": 5, "image_support": True, "raw_pdf_support": True, "text_pdf": True,  "supports_file_attachments": True, "supported_types": "Text, Code, PDF, Images", },
     {"model_nm": "llama3.2", "model_id": 6, "image_support": False, "raw_pdf_support": False, "text_pdf": True,  "supports_file_attachments": False, "supported_types": "Text, Code, PDF(Images Ignored)", },
-    {"model_nm": "gemma3:1b", "model_id": 6, "image_support": False, "raw_pdf_support": False, "text_pdf": True,  "supports_file_attachments": False, "supported_types": "Text, Code, PDF(Images Ignored)", },
-    #{"model_nm": "llama3.4b", "model_id": 7, "image_support": False, "raw_pdf_support": False, "text_pdf": True,  "supports_file_attachments": False, "supported_types": "Text, Code, PDF(Images Ignored)", },
+    {"model_nm": "gemma3:1b", "model_id": 7, "image_support": False, "raw_pdf_support": False, "text_pdf": True,  "supports_file_attachments": False, "supported_types": "Text, Code, PDF(Images Ignored)", },
+    #{"model_nm": "llama3.4b", "model_id": 8, "image_support": False, "raw_pdf_support": False, "text_pdf": True,  "supports_file_attachments": False, "supported_types": "Text, Code, PDF(Images Ignored)", },
     ]
 
 # The file extensions mentioned in TEXT_FILE_EXTENSIONS, SUPPORTED_FILE_TYPES are the file types that are supported.
