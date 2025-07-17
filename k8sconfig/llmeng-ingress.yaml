@@ -21,4 +21,4 @@ spec:
           service:
             name: llmchat-service # Name of your LLMChat Service
             port:
-              number: 7861 # This is the port on which the LLMChat Service defined in llmchat-service.yaml listens (ports.port entry)
+              number: 7861 # This is the port on which the LLMChat Service defined in llmeng-service.yaml listens (ports.port entry)
