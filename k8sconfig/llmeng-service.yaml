@@ -4,7 +4,7 @@ metadata:
   name: llmchat-service
 spec:
   selector:
-    app: llmchat
+    app: llmchat-pod # This should match the label in the POD spec in llmchat deployment
   ports:
   - port: 7861 # This defines the port on which the Kubernetes Service (llmchat-service) itself listens. This is the port that other components within your Kubernetes cluster (like the Ingress controller) will use to communicate with your llmchat service.The external port for the service that users will access
     targetPort: 7860 # The port container listens on. This specifies the port on the pods selected by this Service (app: llmchat) that the Service will forward traffic to. In your llmchat-deployment.yaml, the llmchat container is configured to listen on port 7860. So, when traffic hits llmchat-service:7860, it's then directed to a llmchat pod on its 7860 port.
