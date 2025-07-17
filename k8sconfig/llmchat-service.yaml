@@ -6,7 +6,7 @@ metadata:
     app: llmchat
 spec:
   selector:
-    app: llmchat
+    app: llmchat-pod # This should match the label in the POD spec in llmchat deployment
   ports:
     - protocol: TCP
       port: 7861 # The port you want to expose on the service
