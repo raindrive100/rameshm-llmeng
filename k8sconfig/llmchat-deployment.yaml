@@ -6,6 +6,8 @@ metadata:
     app: llmchat
 spec:
   replicas: 1 # Start with 1 replica for  LLMChat app
+  #nodeSelector:
+    #topology.kubernetes.io/zone: us-east4-a # <--- Add this
   selector:
     matchLabels:
       app: llmchat
@@ -15,7 +17,7 @@ spec:
     rollingUpdate:
       maxUnavailable: 1
       maxSurge: 1
-  template:  # Pod definition starts
+  template:  # Pod definition
     metadata:
       labels:
         app: llmchat
