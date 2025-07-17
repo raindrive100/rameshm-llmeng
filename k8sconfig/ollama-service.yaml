@@ -6,9 +6,9 @@ metadata:
     app: ollama
 spec:
   selector:
-    app: ollama # Selects pods with the label app: ollama
+    app: ollama-pod # Selects pods with the label app: ollama-pod
   ports:
     - protocol: TCP
-      port: 11434 # The port that other services will use to connect to this service
+      port: 11435 # The port that other services will use to connect to this service
       targetPort: 11434 # Port the container is listening on
   type: ClusterIP # Only accessible within the cluster
