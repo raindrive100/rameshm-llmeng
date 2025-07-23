@@ -1,0 +1,8 @@
+# This file is used to configure the backend settings for the LLM chat application.
+# Primarily, it sets the timeout for requests to 60 seconds instead of the default 30 seconds.
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: llmeng-backendconfig
+spec:
+  timeoutSec: 60  # <-- Increase this from default 30 to 60
