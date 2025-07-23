@@ -3,6 +3,7 @@ from typing import List, Dict, Optional, Tuple, Any
 FILE_DETECTION_CONFIDENCE_LEVEL_NEEDED = 0.6
 MAX_COMBINED_SIZE_OF_FILES_UPLOADED = 104*1024*20   # 20MB as max limit for total size of all uploaded files.
 MAX_CHAT_NAME_LENGTH=40 # Number of character long for chat name
+MAX_LLM_OUTPUT_TOKENS = 4096  # Max number of tokens for LLM output. This is a default value and can be overridden by the model.
 
 MODEL_ATTRIBUTES = [
     {"model_nm": "gpt-4o", "model_id": 1, "image_support": True, "raw_pdf_support": False, "text_pdf": True, "supports_file_attachments": True, "supported_types": "Text, Code, PDF, Images", },

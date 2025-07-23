@@ -93,20 +93,27 @@ def validate_inputs(message: str, history: List, model: str, system_message: str
 
 def get_model(model_nm: str):
     logger.debug(f"Generating model instance for model: {model_nm}")
+    max_output_tokens = chat_constants.MAX_LLM_OUTPUT_TOKENS  # Default max output tokens
     if "gpt" in model_nm:
-        return ChatOpenAI(model=model_nm, api_key=os.getenv("OPENAI_API_KEY"), temperature=0.7, timeout=30)
+        return ChatOpenAI(model=model_nm, api_key=os.getenv("OPENAI_API_KEY"), temperature=0.7, timeout=30,
+                          max_tokens=max_output_tokens)
     elif "claude" in model_nm:
         return ChatAnthropic(model=model_nm, api_key=os.getenv("ANTHROPIC_API_KEY"), timeout=30,
-                             temperature=0.7, max_tokens=1024,top_p=0.9, top_k=40)
+                             temperature=0.7, max_tokens=max_output_tokens,top_p=0.9, top_k=40)
     elif "llama" in model_nm or "gemma" in model_nm:
         # Ollama run on "http://localhost:11434"  # Default Ollama URL. If you type that URL you shoud see "Ollama Running" message
         # When built using Docker Compose Ollama runs as its own service and sets an environment OLLAMA_HOST. If that isn't defined
         # then default to localhost.
         ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
         return Ollama(model=model_nm, # api_key="ollama",base_url="http://localhost:11434",
-                      base_url=ollama_host, temperature=0.7, top_p=0.9, top_k=40, num_predict=256, repeat_penalty=1.1)
+                      base_url=ollama_host, temperature=0.7, num_predict=max_output_tokens,
+                      top_p=0.9, top_k=40, repeat_penalty=1.1
+                      )
     elif "gemini" in model_nm:
-         return ChatGoogleGenerativeAI(model=model_nm, google_api_key=os.getenv("GOOGLE_API_KEY"), timeout=30)
+         return ChatGoogleGenerativeAI(model=model_nm, google_api_key=os.getenv("GOOGLE_API_KEY"), timeout=30,
+                                       temperature=0.7, max_output_tokens=max_output_tokens,
+                                       top_p=0.9, top_k=40
+                                       )
     else:
         raise LlmChatException("Model: {model_nm} is not supported")
 
@@ -194,7 +201,7 @@ def get_chat_nm_list(chat_list: Any) -> List[tuple[str, int]]:
     """ Get list of Chat Names and ChatId. Reverse order to show latest chats first"""
     # This method is called directly either from the UI or from the predict function. Need to ensure that the chat_list is a dictionary
     chat_list = extract_from_gr_state_with_type_check(chat_list, dict, {})
-    chat_list_sorted = {k: chat_list[k] for k in sorted(chat_list.keys())} # Latest chat listed first
+    chat_list_sorted = {k: chat_list[k] for k in sorted(chat_list.keys(), reverse=True)} # Latest chat listed first
     return [(llm_chat.get_chat_title(), k) for k, llm_chat in chat_list_sorted.items()]
 
 
