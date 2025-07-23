@@ -8,6 +8,7 @@ metadata:
     #kubernetes.io/ingress.class: "gce"
     networking.gke.io/managed-certificates: llmeng-managed-cert # Use the Managed Certificate created in llmeng-certificate.yaml
     kubernetes.io/ingress.allow-http: "false" # Change to "true" if you want to allow HTTP traffic
+    beta.cloud.google.com/backend-config: '{"default": "llmeng-backendconfig"}' # Use the BackendConfig created in llmeng-backendconfig.yaml
     #force-redeploy: "true"
 spec:
   rules:
