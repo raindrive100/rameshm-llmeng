@@ -140,7 +140,6 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
             model_name="text-embedding-3-small"
         )
 
-
 class CustomGoogleEmbeddingFunction:
     """Custom Google embedding function for ChromaDB"""
 
@@ -149,7 +148,7 @@ class CustomGoogleEmbeddingFunction:
         self.model_name = model_name
         genai.configure(api_key=api_key)
 
-    #def __call__(self, input_texts: List[str]) -> List[List[float]]:
+    #def __call__(self, input_texts: List[str]) -> List[List[float]]: # RRM Code change to match ChromaDB expected signature (changed input_texts to input)
     def __call__(self, input: List[str]) -> List[List[float]]: # RRM Code change to match ChromaDB expected signature (changed input_texts to input)
         """Generate embeddings for input texts"""
         logger.debug(f"In CustomGoogleEmbeddingFunction with model: {self.model_name} and input text Length: {len(input)}") # RRM Code change to log model name and input text length
