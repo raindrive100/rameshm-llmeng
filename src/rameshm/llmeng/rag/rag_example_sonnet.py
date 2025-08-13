@@ -15,7 +15,7 @@ import openai
 import google.generativeai as genai
 import anthropic
 import requests
-from google.genai import types  # RRM Code change to import types from google.genai
+
 from rameshm.llmeng.utils import init_utils # RRM Code change to import init_utils from rameshm.llmeng.utils
 
 # Initialize the logger and sets environment variables
