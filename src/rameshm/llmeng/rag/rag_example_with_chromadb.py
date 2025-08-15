@@ -42,16 +42,7 @@ class ConfigUtils:
 
 class RAGConfig:
     def __init__(self, config_dict):
-        self._config = config_dict
-        self.dataset = self._config["dataset"]
-        self.embedding_model = self._config["embedding_model"]
-        self.llm_model = self._config["llm_model"]
-        self.vector_store = self._config["vector_store"]
-        self.embedding = self._config["embedding"]
-        self.retrieval = self._config["retrieval"]
-        self.llm_generation = self._config["llm_generation"]
-        self.available_embedding_models = self._config["available_embedding_models"]
-        self.available_llm_models = self._config["available_llm_models"]
+        self.__dict__.update(config_dict)
 
 
 # --- Embedding Providers ---
