@@ -9,9 +9,9 @@ import google.generativeai as genai
 import anthropic
 import requests
 
-from dotenv import load_dotenv  # RRM Code change: Added to load environment variables from .env file
-import logging  # RRM Code change: Added for logging errors
-from typing import List, Dict   # RRM Code change: Added for type hints
+from dotenv import load_dotenv
+import logging
+from typing import List, Dict
 
 # --- Config Loader ---
 class ConfigUtils:
@@ -29,11 +29,11 @@ class ConfigUtils:
         emb_choice = input("Enter your choice number: ").strip()
         emb_keys = list(embedding_options.keys())
         try:
-            selected_emb = emb_keys[int(emb_choice)-1]
+            return list(embedding_options.keys())[int(emb_choice)-1]
         except Exception:
-            print("Invalid choice.")
+            print("Invalid choice. Exiting.")
             exit(1)
-        return selected_emb
+
 
     @staticmethod
     def update_config_with_embedding_model(config_data, selected_emb):
@@ -43,6 +43,7 @@ class ConfigUtils:
 class RAGConfig:
     def __init__(self, config_dict):
         self._config = config_dict
+        self.dataset = self._config["dataset"]
         self.embedding_model = self._config["embedding_model"]
         self.llm_model = self._config["llm_model"]
         self.vector_store = self._config["vector_store"]
@@ -87,7 +88,7 @@ class GoogleEmbeddingFunction:
                 model=self.model_name,
                 content=text,
                 output_dimensionality=self.dimensions,
-                task_type="retrieval_document"
+                task_type="RETRIEVAL_QUERY"
             )
             embeddings.append(result["embedding"])
         return embeddings
@@ -199,29 +200,29 @@ class LLMFactory:
 # --- Data Loader ---
 class DataLoader:
     @staticmethod
-    def load_hotpot_qa_data():
-        dataset = load_dataset("hotpot_qa", "distractor")
-        return dataset["train"]
+    def load_hotpot_qa_data(name: str, subset: str, split: str, ingest_limit: int =None):
+        print(f"Loading dataset: {name}, subset: {subset}, split: {split}")
+        dataset = load_dataset(name, subset, split=split)
+        if ingest_limit and ingest_limit > 0:
+            print(f"Ingest limit set to {ingest_limit}. Limiting dataset size.")
+            dataset = dataset.select(range(ingest_limit))
+        return dataset
     @staticmethod
-    def process_context_data(data, max_examples=None):
+    def process_context_data(data):
         ids, documents, metadatas = [], [], []
         for idx, example in enumerate(data):
-            if max_examples and idx >= max_examples:
-                break
             context = example["context"]
             titles = context["title"]
             sentences = context["sentences"]
-            doc_parts = []
-            for t, s in zip(titles, sentences):
-                doc_parts.append(f"{t} : {', '.join(s)}")
-            document = ", ".join(doc_parts)
-            ids.append(example["id"])
-            documents.append(document)
-            meta = {
-                "type": example.get("type", "unknown"), # RRM Code change: "type" is from "example" and not from context.
-                "level": example.get("level", "unknown")    # RRM Code change: "level" is from "example" and not from context.
-            }
-            metadatas.append(meta)
+            for ctx_idx, (title, sentences_part) in enumerate(zip(titles, sentences)):
+                document = f"{title} : {'; '.join(sentences_part)}"
+                ids.append(f"{example['id']}_{ctx_idx}")
+                documents.append(document)
+                meta = {
+                    "type": example.get("type", "unknown"),
+                    "level": example.get("level", "unknown")
+                }
+                metadatas.append(meta)
         return ids, documents, metadatas
 
 # --- Vector Store ---
@@ -234,12 +235,12 @@ class VectorStore:
         )
 
         col_name = self.config.vector_store["collection_name"]
-        try:  # RRM Code change - Deleting existing collection for demo purposes
-            # If collection exists, delete it for a fresh start (for demo purposes)
+        # If collection exists, delete it for a fresh start (for demo purposes)
+        try:
             self.client.delete_collection(name=col_name)
             logging.info(f"Deleted existing collection: {col_name}")
         except Exception:
-            pass  # Collection doesn't exist
+            pass  # Collection doesn't exist. Not an error
 
         self.collection = self.client.get_or_create_collection(
             name=col_name,
@@ -256,6 +257,7 @@ class VectorStore:
                 documents=documents[i:i+batch_size],
                 metadatas=metadatas[i:i+batch_size]
             )
+
     def query(self, query_text, n_results):
         return self.collection.query(
             query_texts=[query_text],
@@ -271,9 +273,11 @@ class RAGPipeline:
         self.vector_store = VectorStore(self.config, embedding_function)
         self.llm_provider = None
     def load_and_index_data(self):
-        data = DataLoader.load_hotpot_qa_data()
-        max_examples = self.config.retrieval.get("max_examples")
-        ids, documents, metadatas = DataLoader.process_context_data(data, max_examples)
+        ingest_limit = self.config.dataset.get("ingest_limit", None)
+        data = DataLoader.load_hotpot_qa_data(self.config.dataset["name"], self.config.dataset['subset'], self.config.dataset["split"],
+                                              ingest_limit)
+        print(f"Loaded {len(data)} examples from dataset.")
+        ids, documents, metadatas = DataLoader.process_context_data(data)
         self.vector_store.add_documents(ids, documents, metadatas)
     def setup_llm(self, model_name):
         self.llm_provider = LLMFactory.get_provider(model_name)
@@ -281,11 +285,13 @@ class RAGPipeline:
         results = self.vector_store.query(user_query, self.config.retrieval["top_k_results"])
         documents = results["documents"][0]
         distances = results["distances"][0]
+        print(f"Retrieved {len(documents)} documents with distances: {distances}")
         context_parts = []
         for i, (doc, distance) in enumerate(zip(documents, distances)):
             context_parts.append(f"Document {i+1} (similarity: {1-distance:.3f}):\n{doc}\n")
         context = "\n".join(context_parts)
         if len(context) > self.config.retrieval["max_context_length"]:
+            print(f"Context length ({len(context)}) exceeds max limit ({self.config.retrieval['max_context_length']}). Truncating.")
             context = context[:self.config.retrieval["max_context_length"]] + "..."
         return self.llm_provider.generate_response(
             context, user_query, self.config.llm_generation["system_prompt"]
@@ -293,11 +299,14 @@ class RAGPipeline:
 
 # --- Main ---
 def main():
-    load_dotenv()
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(script_dir, 'rag_config_copilot_gpt.yaml')
+    load_dotenv()   # Load environment variables from .env file
 
+    # Set path to the configuration file
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(script_dir, 'rag_example_config_with_chromadb.yaml')
     config_data = ConfigUtils.load_config(config_path)
+
+    # Set embedding model based on user selection
     selected_emb = ConfigUtils.select_embedding_model(config_data)
     config_data = ConfigUtils.update_config_with_embedding_model(config_data, selected_emb)
     print(f"Using embedding model: {selected_emb}")
@@ -306,18 +315,33 @@ def main():
     pipeline = RAGPipeline(rag_config)
     print("Loading and indexing data (this may take a while)...")
     pipeline.load_and_index_data()
+
+    # Select and set-up LLM model based on user input
     llm_options = pipeline.config.available_llm_models
     print("\nSelect LLM model:")
     for i, (k, v) in enumerate(llm_options.items(), 1):
         print(f"{i}: {k} ({v['description']})")
     llm_choice = input("Enter your choice number: ").strip()
     llm_keys = list(llm_options.keys())
-    try:
-        selected_llm = llm_keys[int(llm_choice)-1]
-    except Exception:
-        print("Invalid choice.")
-        return
+
+    retry = True
+    num_tries = 0
+    while retry:
+        try:
+            selected_llm = llm_keys[int(llm_choice)-1]
+            break
+        except (ValueError, IndexError):
+            num_tries += 1
+            print("Invalid choice.")
+            if num_tries < 3:
+                llm_choice = input("Please enter a valid choice number: ").strip()
+                continue
+            else:
+                err_msg = "Too many invalid attempts for LLM selection."
+                print(err_msg)
+                raise ValueError(err_msg)
     pipeline.setup_llm(selected_llm)
+
     print("\nReady for queries. Type 'quit' to exit.")
     while True:
         user_query = input("\nEnter your question: ").strip()
@@ -331,7 +355,10 @@ def main():
             response = pipeline.query(user_query)
             print(f"\nAnswer:\n{response}")
         except Exception as e:
-            logging.error(f"Error: {e}", exc_info=True) # RRM Code change: Added logging for errors.
+            err_msg = f"Error processing query: {e}"
+            logging.error(err_msg, exc_info=True)
+            print(err_msg)
+
 
 if __name__ == "__main__":
     main()
