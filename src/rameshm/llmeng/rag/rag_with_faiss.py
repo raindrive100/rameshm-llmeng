@@ -8,11 +8,12 @@ import faiss
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 from datasets import load_dataset, Dataset
-from rameshm.llmeng.utils import init_utils
 import rag_constants
 from typing import List, Tuple
+from dotenv import load_dotenv
 
-my_logger = init_utils.set_environment_logger()
+load_dotenv()
+
 
 def load_hotspot_data(primary_split: str = "distractor", secondary_split: str = "train",
                       dataset_size: int = 0) -> Dataset:
