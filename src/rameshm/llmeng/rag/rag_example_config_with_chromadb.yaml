@@ -50,7 +50,7 @@ available_llm_models:
     provider: ollama
     description: "Meta LLaMA 3.2 (local via Ollama)"
     api_key_required: false
-    endpoint: http://localhost:11434
+    endpoint: http://localhost:11434/v1
   claude-sonnet-4-20250514:
     provider: anthropic
     description: "Claude Sonnet 4"
