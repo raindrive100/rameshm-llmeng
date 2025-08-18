@@ -35,6 +35,7 @@ class MyLogger:
         """
         Define and return Log Config
         """
+        DEFAULT_LOG_LEVEL = logging.INFO
         log_to_file = os.getenv("LLM_LOG_TO_FILE", "false").lower() == "true"
         log_handlers = ["fileHandler"] if log_to_file else ["consoleStdOut"]
            
@@ -51,19 +52,19 @@ class MyLogger:
             "consoleStdOut": {
               "class": "logging.StreamHandler",
               "formatter": "standard",
-              "level": f'{os.getenv("LLM_APP_LOG_LEVEL")}',
+              "level": f'{os.getenv("LLM_APP_LOG_LEVEL", DEFAULT_LOG_LEVEL)}',
               "stream": "ext://sys.stdout"
             },
             "consoleStdErr": {
               "class": "logging.StreamHandler",
               "formatter": "standard",
-              "level": f'{os.getenv("LLM_APP_LOG_LEVEL")}',
+              "level": f'{os.getenv("LLM_APP_LOG_LEVEL", DEFAULT_LOG_LEVEL)}',
               "stream": "ext://sys.stderr"
             },
             "fileHandler": {
               "class": "logging.handlers.RotatingFileHandler",
               "formatter": "standard",
-              "level": f'{os.getenv("LLM_APP_LOG_LEVEL")}',
+              "level": f'{os.getenv("LLM_APP_LOG_LEVEL", DEFAULT_LOG_LEVEL)}',
               "filename": f"{self.log_file_nm}",
               "encoding": "utf8",
               "maxBytes": int(os.getenv("LLM_LOG_FILE_MAX_BITE_SIZE", 1024*1024*10)), #10MB Log file
