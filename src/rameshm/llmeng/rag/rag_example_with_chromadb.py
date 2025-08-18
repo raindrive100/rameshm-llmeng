@@ -11,7 +11,10 @@ import requests
 
 from dotenv import load_dotenv
 import logging
-from typing import List, Dict
+from logging_config import MyLogger
+
+logger = None   # Set logger as a global variable.
+
 
 # --- Config Loader ---
 class ConfigUtils:
@@ -20,25 +23,58 @@ class ConfigUtils:
         with open(config_path, "r") as f:
             return yaml.safe_load(f)
 
+
     @staticmethod
-    def select_embedding_model(config_data):
-        embedding_options = config_data["available_embedding_models"]
-        print("\nSelect Embedding Model:")
-        for i, (k, v) in enumerate(embedding_options.items(), 1):
+    def select_model(config_data, model_type: str) -> str:
+        """Selects LLM model from available options in the config data."""
+        if model_type.lower() == "llm":
+            model_options = config_data["available_llm_models"]
+        elif model_type.lower() == "embedding":
+            model_options = config_data["available_embedding_models"]
+        else:
+            raise ValueError("model_choice must be either 'llm' or 'embedding'")
+
+        print(f"\nSelect {model_type} model:")
+        for i, (k, v) in enumerate(model_options.items(), 1):
             print(f"{i}: {k} ({v['description']})")
-        emb_choice = input("Enter your choice number: ").strip()
-        emb_keys = list(embedding_options.keys())
-        try:
-            return list(embedding_options.keys())[int(emb_choice)-1]
-        except Exception:
-            print("Invalid choice. Exiting.")
-            exit(1)
+        model_keys = list(model_options.keys())
+
+        # Select LLM with retries
+        retry = True
+        num_tries = 0
+        selected_model = None
+        while retry:
+            try:
+                model_choice = input("Enter your choice number: ").strip()
+                print("\n") # For better readability in console
+                if int(model_choice) > 0:
+                    selected_model = model_keys[int(model_choice) - 1]
+                else:
+                    raise ValueError("Choice [{model_choice}] must be a positive number.")
+                break
+            except (ValueError, IndexError):
+                num_tries += 1
+                print("Invalid model choice.")
+                if num_tries < 3:
+                    continue
+                else:
+                    err_msg = f"Too many invalid attempts for {model_type} model selection."
+                    print(err_msg)
+                    raise ValueError(err_msg)
+        return selected_model
 
 
     @staticmethod
     def update_config_with_embedding_model(config_data, selected_emb):
         config_data["embedding_model"] = selected_emb
         return config_data
+
+
+    @staticmethod
+    def update_config_with_llm_model(config_data, selected_llm):
+        config_data["llm_model"] = selected_llm
+        return config_data
+
 
 class RAGConfig:
     def __init__(self, config_dict):
@@ -104,6 +140,7 @@ class EmbeddingFactory:
     @classmethod
     def get_provider(cls, model_name):
         provider_cls = cls._providers.get(model_name)
+        logger.debug(f"Creating Embedder Model Class: {provider_cls.__name__}")
         if not provider_cls:
             raise ValueError(f"Unsupported embedding model: {model_name}")
         return provider_cls()
@@ -114,9 +151,15 @@ class LLMProvider:
         raise NotImplementedError
 
 class OpenAIProvider(LLMProvider):
+    # Both OpenAI and Ollama use the same OpenAI API client
     def __init__(self, model_name):
         self.model_name = model_name
-        self.client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        if ("llama" in model_name):
+            self.client = openai.OpenAI(base_url = "http://localhost:11434/v1", api_key=os.getenv("OLLAMA_API_KEY", "ollama"))
+        elif ("gpt" in model_name):
+            self.client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        else:
+            raise ValueError(f"Unsupported OpenAI model: {model_name}")
     def generate_response(self, context, query, system_prompt):
         prompt = f"{system_prompt}\n\nContext:\n{context}\n\nQuestion: {query}\n\nAnswer:"
         response = self.client.chat.completions.create(
@@ -159,31 +202,18 @@ class ClaudeProvider(LLMProvider):
         )
         return response.content[0].text
 
-class OllamaProvider(LLMProvider):
-    def __init__(self, model_name):
-        self.model_name = model_name
-        self.base_url = "http://localhost:11434"
-        self.api_key = os.getenv("OLLAMA_API_KEY", "ollama")
-    def generate_response(self, context, query, system_prompt):
-        prompt = f"{system_prompt}\n\nContext:\n{context}\n\nQuestion: {query}\n\nAnswer:"
-        response = requests.post(
-            f"{self.base_url}/api/generate",
-            json={"model": self.model_name, "prompt": prompt, "stream": False},
-            headers={"Authorization": f"Bearer {self.api_key}"}
-        )
-        response.raise_for_status()
-        return response.json()["response"]
 
 class LLMFactory:
     _providers = {
         "gpt-4o-mini": OpenAIProvider,
         "gemini-1.5-flash": GoogleProvider,
-        "llama3.2": OllamaProvider,
+        "llama3.2": OpenAIProvider, # OpenAIProvider handles Ollama models too
         "claude-sonnet-4-20250514": ClaudeProvider,
     }
     @classmethod
     def get_provider(cls, model_name):
         provider_cls = cls._providers.get(model_name)
+        logger.debug(f"Creating LLM Model Class: {provider_cls.__name__}")
         if not provider_cls:
             raise ValueError(f"Unsupported LLM model: {model_name}")
         return provider_cls(model_name)
@@ -192,10 +222,10 @@ class LLMFactory:
 class DataLoader:
     @staticmethod
     def load_hotpot_qa_data(name: str, subset: str, split: str, ingest_limit: int =None):
-        print(f"Loading dataset: {name}, subset: {subset}, split: {split}")
+        logger.debug(f"Loading dataset: {name}, subset: {subset}, split: {split}")
         dataset = load_dataset(name, subset, split=split)
         if ingest_limit and ingest_limit > 0:
-            print(f"Ingest limit set to {ingest_limit}. Limiting dataset size.")
+            logger.debug(f"Limiting Dataset size to: {ingest_limit} per the set ingesting limit.")
             dataset = dataset.select(range(ingest_limit))
         return dataset
     @staticmethod
@@ -229,7 +259,7 @@ class VectorStore:
         # If collection exists, delete it for a fresh start (for demo purposes)
         try:
             self.client.delete_collection(name=col_name)
-            logging.info(f"Deleted existing collection: {col_name}")
+            logger.info(f"Deleted existing collection: {col_name}")
         except Exception:
             pass  # Collection doesn't exist. Not an error
 
@@ -267,7 +297,7 @@ class RAGPipeline:
         ingest_limit = self.config.dataset.get("ingest_limit", None)
         data = DataLoader.load_hotpot_qa_data(self.config.dataset["name"], self.config.dataset['subset'], self.config.dataset["split"],
                                               ingest_limit)
-        print(f"Loaded {len(data)} examples from dataset.")
+        logger.debug(f"Loaded {len(data)} examples from dataset.")
         ids, documents, metadatas = DataLoader.process_context_data(data)
         self.vector_store.add_documents(ids, documents, metadatas)
     def setup_llm(self, model_name):
@@ -276,21 +306,26 @@ class RAGPipeline:
         results = self.vector_store.query(user_query, self.config.retrieval["top_k_results"])
         documents = results["documents"][0]
         distances = results["distances"][0]
-        print(f"Retrieved {len(documents)} documents with distances: {distances}")
+        logger.debug(f"Retrieved {len(documents)} documents with distances: {distances}")
         context_parts = []
         for i, (doc, distance) in enumerate(zip(documents, distances)):
             context_parts.append(f"Document {i+1} (similarity: {1-distance:.3f}):\n{doc}\n")
         context = "\n".join(context_parts)
         if len(context) > self.config.retrieval["max_context_length"]:
-            print(f"Context length ({len(context)}) exceeds max limit ({self.config.retrieval['max_context_length']}). Truncating.")
+            logger.debug(f"Context length ({len(context)}) exceeds max limit ({self.config.retrieval['max_context_length']}). Truncating.")
             context = context[:self.config.retrieval["max_context_length"]] + "..."
         return self.llm_provider.generate_response(
             context, user_query, self.config.llm_generation["system_prompt"]
         )
 
 # --- Main ---
-def main():
+def main(log_level: str = "INFO"):
     load_dotenv()   # Load environment variables from .env file
+
+    # Set up logging
+    global logger
+    log_file_nm = "log/rag_example_with_chromadb.log"
+    logger= MyLogger(log_file_nm=log_file_nm, log_level=log_level).get_logger("llm_engineering")
 
     # Set path to the configuration file
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -298,40 +333,22 @@ def main():
     config_data = ConfigUtils.load_config(config_path)
 
     # Set embedding model based on user selection
-    selected_emb = ConfigUtils.select_embedding_model(config_data)
+    selected_emb = ConfigUtils.select_model(config_data, "embedding")
     config_data = ConfigUtils.update_config_with_embedding_model(config_data, selected_emb)
-    print(f"Using embedding model: {selected_emb}")
+    logger.info(f"Using embedding model: {selected_emb}")
+
+    # Set LLM model based on user selection
+    selected_llm = ConfigUtils.select_model(config_data, "LLM")
+    config_data = ConfigUtils.update_config_with_llm_model(config_data, selected_llm)
+    logger.info(f"Using LLM model: {selected_llm}")
 
     rag_config = RAGConfig(config_data)
     pipeline = RAGPipeline(rag_config)
-    print("Loading and indexing data (this may take a while)...")
+
+    logger.debug("Loading and indexing data (this may take a while)...")
     pipeline.load_and_index_data()
 
-    # Select and set-up LLM model based on user input
-    llm_options = pipeline.config.available_llm_models
-    print("\nSelect LLM model:")
-    for i, (k, v) in enumerate(llm_options.items(), 1):
-        print(f"{i}: {k} ({v['description']})")
-    llm_choice = input("Enter your choice number: ").strip()
-    llm_keys = list(llm_options.keys())
-
-    retry = True
-    num_tries = 0
-    while retry:
-        try:
-            selected_llm = llm_keys[int(llm_choice)-1]
-            break
-        except (ValueError, IndexError):
-            num_tries += 1
-            print("Invalid choice.")
-            if num_tries < 3:
-                llm_choice = input("Please enter a valid choice number: ").strip()
-                continue
-            else:
-                err_msg = "Too many invalid attempts for LLM selection."
-                print(err_msg)
-                raise ValueError(err_msg)
-    pipeline.setup_llm(selected_llm)
+    pipeline.setup_llm(rag_config.llm_model)    #selected_llm)
 
     print("\nReady for queries. Type 'quit' to exit.")
     while True:
@@ -344,12 +361,15 @@ def main():
         print("Processing your query...")
         try:
             response = pipeline.query(user_query)
-            print(f"\nAnswer:\n{response}")
+            logger.info(f"\nAnswer:\n{response} ** For query: {user_query} **\n")
         except Exception as e:
             err_msg = f"Error processing query: {e}"
-            logging.error(err_msg, exc_info=True)
-            print(err_msg)
+            logger.error(err_msg, exc_info=True)
 
 
 if __name__ == "__main__":
-    main()
+    log_level = input(f"Input the preferred logging level to be one of: DEBUG | Info | Error: ")
+    if log_level.lower() not in ["debug", "info", "warning", "error", "critical"]:
+        print(f"Invalid log level '{log_level}'. Defaulting to INFO.")
+        log_level = "INFO"
+    main(log_level=log_level.upper())
