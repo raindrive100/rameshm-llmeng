@@ -1,364 +1,303 @@
-import os
-import json
-import logging
-from typing import List, Dict, Optional, Any
+# rag_pipeline.py
 
+import os
+import yaml
 import chromadb
 from chromadb.utils import embedding_functions
 from datasets import load_dataset
-from dotenv import load_dotenv
-
-from google.generativeai import GenerativeModel, configure
+from typing import Dict, List, Any
+import google.generativeai as genai
 from openai import OpenAI
 from anthropic import Anthropic
 from ollama import Client as OllamaClient
+import time
+from tqdm import tqdm
 
-# Load environment variables
-load_dotenv()
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(filename)s - %(funcName)s - %(lineno)d - %(levelname)s - %(message)s',
-                    datefmt='%Y-%m-%d %H:%M:%S')
+from dotenv import load_dotenv  # RRM Code change to load environment variables from .env file
 
 
-class EmbeddingModelFactory:
-    """
-    A factory for creating embedding functions based on configuration.
-    """
-
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
-
-    def get_embedding_function(self, model_name: str):
-        """
-        Returns the appropriate embedding function based on the model name.
-        """
-        logging.info(f"Selected embedding model: {model_name}")    # RRM Code change: Added print statement to show selected embedding model
-        if model_name == self.config["EMBEDDING_MODELS"]["GOOGLE"]:
-            return self._create_google_embedding_function()
-        elif model_name == self.config["EMBEDDING_MODELS"]["OPENAI"]:
-            return self._create_openai_embedding_function()
-        elif model_name == self.config["EMBEDDING_MODELS"]["CHROMA"]:
-            return embedding_functions.SentenceTransformerEmbeddingFunction(
-                model_name=self.config["EMBEDDING_MODELS"]["CHROMA"]
-            )
-        else:
-            raise ValueError(f"Unsupported embedding model: {model_name}")
-
-    def _create_google_embedding_function(self):
-        google_api_key = os.getenv("GOOGLE_API_KEY")
-        if not google_api_key:
-            raise ValueError("GOOGLE_API_KEY is not set in environment variables.")
-        configure(api_key=google_api_key)
-        return embedding_functions.GoogleGenerativeAiEmbeddingFunction(
-            api_key=google_api_key,
-            model_name=self.config["EMBEDDING_MODELS"]["GOOGLE"],
-            #output_dimensionality=self.config["EMBEDDING_MODELS"]["DIMENSIONS"]    # RRM Code change: Removed output_dimensionality as it is not a parameter for GoogleGenerativeAiEmbeddingFunction
-        )
-
-    def _create_openai_embedding_function(self):
-        openai_api_key = os.getenv("OPENAI_API_KEY")
-        if not openai_api_key:
-            raise ValueError("OPENAI_API_KEY is not set in environment variables.")
-        return embedding_functions.OpenAIEmbeddingFunction(
-            api_key=openai_api_key,
-            model_name=self.config["EMBEDDING_MODELS"]["OPENAI"],
-            #embedding_dim=self.config["EMBEDDING_MODELS"]["DIMENSIONS"]    # RRM Code change: Removed embedding_dim as it is not a parameter for OpenAIEmbeddingFunction
-        )
-
-
-class LLMFactory:
-    """
-    A factory for creating LLM clients based on configuration.
-    """
-
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
-
-    def get_llm_client(self, llm_model: str):  # RRM Code change: changed paramter from llm_choice to llm_model
-        """
-        Returns the appropriate LLM client based on the user's choice.
-        """
-        # llm_model = self.config["LLM_PROVIDERS"].get(llm_choice.upper())  # RRM Code change: llm_model is now passed directly instead of llm_choice
-        # if not llm_model:
-        #     raise ValueError(f"Unsupported LLM choice: {llm_choice}")
-
-        if "gpt" in llm_model:
-            return OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        elif "gemini" in llm_model:
-            configure(api_key=os.getenv("GOOGLE_API_KEY"))  # RRM Code change: Added configure call to set Google API key which was missing.
-            return GenerativeModel(llm_model)
-        elif "llama" in llm_model:
-            return OllamaClient(host=os.getenv("OLLAMA_API_URL", "http://localhost:11434"))
-        elif "claude" in llm_model:
-            return Anthropic(api_key=os.getenv("CLAUDE_API_KEY"))
-        else:
-            raise ValueError(f"Unsupported LLM model: {llm_model}")
-
-
+# --- Configuration and Environment Setup ---
+load_dotenv()   # RRM Code change to load environment variables from .env file
+# Load the configuration from the YAML file
 def load_config(config_path: str) -> Dict[str, Any]:
+    """Loads a YAML configuration file."""
+    with open(config_path, 'r') as file:
+        return yaml.safe_load(file)
+
+script_dir = os.path.dirname(os.path.abspath(__file__)) # RRM Code change to set config path relative to script directory
+config_path = os.path.join(script_dir, 'rag_config_gemini25_ChromaDB_14Aug.yaml') # RRM Code change to set config path relative to script directory
+CONFIG = load_config(config_path)   # RRM Code change to load config from YAML file with relative path
+#CONFIG = load_config("config.yaml")
+
+# Check and set API keys from environment variables
+def get_api_key(provider_name: str, env_var: str) -> str:
+    """Retrieves an API key from an environment variable."""
+    key = os.getenv(env_var)
+    if not key:
+        print(f"Warning: {provider_name} API key not found. Please set the '{env_var}' environment variable.")
+        return None
+    return key
+
+
+# --- Embedding Model Management ---
+def get_embedding_function(model_name: str) -> embedding_functions.EmbeddingFunction:
     """
-    Loads configuration from a JSON file.
+    Factory function to create the appropriate embedding function based on the model name.
+    This architecture supports adding new embedding models by extending the factory.
     """
-    try:
-        with open(config_path, 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        logging.error(f"Config file not found at {config_path}")
-        exit()
+    if model_name == 'gemini-embedding-001':
+        api_key = get_api_key('Google', 'GOOGLE_API_KEY')
+        if not api_key:
+            # TODO: Human input required here if key is not available
+            raise ValueError("Google API key is required for gemini-embedding-001.")
+        return embedding_functions.GoogleGenerativeAiEmbeddingFunction(
+            api_key=api_key,
+            model_name=model_name,
+            output_dimensionality=CONFIG['embedding_output_dimensionality']
+        )
+    elif model_name == 'text-embedding-3-small':
+        api_key = get_api_key('OpenAI', 'OPENAI_API_KEY')
+        if not api_key:
+            # TODO: Human input required here if key is not available
+            raise ValueError("OpenAI API key is required for text-embedding-3-small.")
+        return embedding_functions.OpenAIEmbeddingFunction(
+            api_key=api_key,
+            model_name=model_name,
+            #embedding_dim=CONFIG['embedding_output_dimensionality']    # RRM Code Change: Use embedding_dim is not a parameter in OpenAIEmbeddingFunction
+        )
+    elif model_name == 'all-MiniLM-L6-v2':
+        # ChromaDB's default embedding function
+        return embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name='all-MiniLM-L6-v2'
+        )
+    else:
+        raise ValueError(f"Unsupported embedding model: {model_name}")
 
 
-def get_data(config: Dict[str, Any]) -> List[Dict[str, Any]]:
+# --- Data Preparation and Ingestion ---
+def load_and_prepare_data(max_points: int) -> tuple[List[str], List[str], List[dict]]:
     """
-    Loads and preprocesses the data from Hugging Face.
+    Loads the hotpot_qa dataset, prepares documents, ids, and metadata.
+    Data concatenation:
+    - collection.documents: 'title[0] : sentences[0], title[1] : sentences[1], ...'
+    - collection.ids: 'id' from each document entry
+    - collection.metadatas: optional dictionary with 'type' and 'level'
     """
-    logging.info("Loading and processing dataset...")
-    dataset = load_dataset(config["DATASET"]["NAME"], config["DATASET"]["INSTANCE"], split=config["DATASET"]["SPLIT"])
+    print("Loading hotpot_qa dataset...")
+    dataset = load_dataset("hotpot_qa", CONFIG['data_instance'], split=CONFIG['data_split'])
 
-    processed_data = []
-    docs_to_process = config["DATASET"].get("DOCS_TO_PROCESS", None)    # RRM Code change: Adding code to process subset for testing
-    docs_processed = 0   # RRM Code change: Adding code to process subset for testing
-    for entry in dataset:
-        context = entry['context']
+    if max_points and max_points > 0:
+        dataset = dataset.select(range(max_points))
 
-        # Concatenate title and sentences for collection.documents
-        documents_list = []
-        for title, sentences in zip(context['title'], context['sentences']):
-            # Ensure sentences is a list of strings and join them
-            if isinstance(sentences, list):
-                sentences = ' '.join(sentences)
-            documents_list.append(f"{title} : {sentences}")
+    documents = []
+    ids = []
+    metadatas = []
 
-        # Join all title:sentence pairs into a single string
-        document = ", ".join(documents_list)
-
-        # Extract metadata
-        metadata = {
-            "type": entry.get('type', []),    # RRM Code change: "type" is at "entry" level, not "context"
-            "level": entry.get('level', [])   # RRM Code change: "type" is at "entry" level, not "context"
-        }
-
-        # Use the ID from the first context item
-        doc_id = entry['id'] if entry['id'] else None    # RRM Code change: "id" is at "entry" level, not "context"
-
-        if doc_id:
-            processed_data.append({
-                "id": doc_id,
-                "document": document,
-                "metadata": metadata
-            })
-
-        docs_processed += 1  # RRM Code change: Adding code to process subset for testing
-        if docs_to_process and docs_processed >= docs_to_process:    # RRM Code change: Adding code to process subset for testing
-            logging.info(f"Processed {docs_processed} documents, stopping as per configuration.")
+    docs_processed = 0  # RRM Code Change: Track number of documents processed
+    max_docs_to_process = CONFIG['max_hotpot_qa_docs_to_process'] # RRM Code Change: Limit number of documents to process
+    for item in tqdm(dataset, desc="Preparing documents"):
+        if docs_processed >= max_docs_to_process: # RRM Code Change: Stop processing if limit reached
             break
-        else:
-            continue
+        docs_processed += 1
+        id_str = item['id']
+        context_data = item['context']
 
-    return processed_data
+        # Concatenate title and sentences as a single string for the document
+        document_parts = [f"{title} : {sentences}" for title, sentences in
+                          zip(context_data['title'], context_data['sentences'])]
+        document = " ".join(document_parts)
+
+        # Store the id
+        ids.append(id_str)
+
+        # Store the prepared document
+        documents.append(document)
+
+        # Optional: Store metadata
+        # TODO: The 'type' and 'level' fields are not directly present in the `distractor` split of the hotpot_qa dataset.
+        # Placeholder for metadata as per the prompt's optional requirement.
+        metadatas.append({'source': 'hotpot_qa', 'split': CONFIG['data_split']})
+
+    print(f"Loaded {len(documents)} documents.")
+    return documents, ids, metadatas
 
 
-def setup_chroma_db(config: Dict[str, Any], embedding_function):
+# --- ChromaDB Vector Store Management ---
+def setup_vector_store() -> chromadb.Collection:
     """
-    Sets up and persists the ChromaDB collection.
+    Sets up a persistent ChromaDB client and collection.
+    - Uses a user-selected embedding model.
+    - Sets cosine similarity for the HNSW index.
+    - Creates a new collection or gets an existing one.
     """
-    logging.info("Setting up ChromaDB...")
-    client = chromadb.PersistentClient(path=config["VECTOR_STORE"]["PATH"])
+    client = chromadb.PersistentClient(path=CONFIG['persist_directory'])
+    embedding_func = get_embedding_function(CONFIG['embedding_model'])
 
-    # RRM Code Change: For testing purposes. Delete collection if it exists.
-    col_name = config["VECTOR_STORE"]["COLLECTION_NAME"]
+    # The HNSW space must be set at collection creation
+    metadata = {"hnsw:space": "cosine"}
+
+    # RRM Code Change: Delete collection if it exists so that we can create new ones with same name but different embeddings
+    # RRM Code Change: Below try-except block is for demo purposes to ensure a fresh start
     try:    # RRM Code change - Deleting existing collection for demo purposes
         # If collection exists, delete it for a fresh start (for demo purposes)
-        client.delete_collection(name=col_name)
-        logging.info(f"Deleted existing collection: {col_name}")
+        client.delete_collection(name=CONFIG['collection_name'])    # RRM Code change - Deleting existing collection for demo purposes
+        print(f"Deleted existing collection: {CONFIG['collection_name']}")    # RRM Code change - Print statement for deleted collection
     except Exception:
         pass  # Collection doesn't exist
 
-
-    # Define collection metadata for cosine similarity
-    collection = client.get_or_create_collection(
-        name=col_name,  # RRM Code change: Use collection name from config
-        embedding_function=embedding_function,
-        metadata={"hnsw:space": "cosine"}
-    )
+    try:
+        collection = client.get_or_create_collection(
+            name=CONFIG['collection_name'],
+            embedding_function=embedding_func,
+            metadata=metadata
+        )
+    except Exception as e:
+        print(f"Error creating/getting collection: {e}")
+        # TODO: Human input required here to handle collection creation errors
+        raise
 
     return collection
 
 
-def populate_chroma_db(collection, processed_data: List[Dict[str, Any]]):
+# --- LLM Integration and Response Generation ---
+def get_llm_client(model_name: str):
     """
-    Adds documents to the ChromaDB collection if it's empty.
+    Factory function to get the appropriate LLM client.
+    This supports future extensibility via config updates.
     """
-    if collection.count() == 0: # RRM Code change: For demo purposes Collection is always deleted and recreated, so it will always be empty
-        logging.info("Populating ChromaDB with documents...")
-        ids = [item["id"] for item in processed_data]
-        documents = [item["document"] for item in processed_data]
-        metadatas = [item["metadata"] for item in processed_data]
+    if model_name == 'gpt-4o-mini':
+        api_key = get_api_key('OpenAI', 'OPENAI_API_KEY')
+        if not api_key:
+            # TODO: Human input required here if key is not available
+            raise ValueError("OpenAI API key required for gpt-4o-mini.")
+        return OpenAI(api_key=api_key)
+    elif model_name == 'gemini-1.5-flash':
+        api_key = get_api_key('Google', 'GOOGLE_API_KEY')
+        if not api_key:
+            # TODO: Human input required here if key is not available
+            raise ValueError("Google API key required for gemini-1.5-flash.")
+        genai.configure(api_key=api_key)
+        return genai.GenerativeModel('gemini-1.5-flash')
+    elif model_name == 'claude-sonnet-4-20250514':
+        api_key = get_api_key('Claude', 'ANTHROPIC_API_KEY')
+        if not api_key:
+            # TODO: Human input required here if key is not available
+            raise ValueError("Claude API key required for claude-sonnet-4-20250514.")
+        return Anthropic(api_key=api_key)
+    elif model_name == 'llama3.2':
+        # Ollama client for local llama3.2 model
+        return OllamaClient(host=CONFIG['llama_api_base'])
+    else:
+        raise ValueError(f"Unsupported LLM model: {model_name}")
 
+
+def generate_response(llm_client, model_name: str, query: str, context: List[str]) -> str:
+    """Generates a response from the LLM using the retrieved context."""
+    full_context = "\n\n".join(context)
+    prompt = f"Based on the following context, answer the user's query:\n\nContext:\n{full_context}\n\nQuery: {query}\n\nAnswer:"
+    print(f"DELETE THIS PRINT: Sending prompt to {model_name}...: {prompt}")
+
+    try:
+        if model_name in ['gpt-4o-mini', 'llama3.2']:
+            messages = [{"role": "user", "content": prompt}]
+            if model_name == 'gpt-4o-mini':
+                response = llm_client.chat.completions.create(model=model_name, messages=messages)
+                return response.choices[0].message.content
+            elif model_name == 'llama3.2':
+                # Use a different client method for Ollama
+                response = llm_client.chat(model='llama3.2', messages=messages)
+                return response['message']['content']
+        elif model_name == 'gemini-1.5-flash':
+            response = llm_client.generate_content(prompt)
+            return response.text
+        elif model_name == 'claude-sonnet-4-20250514':
+            response = llm_client.messages.create(
+                model=model_name,
+                max_tokens=1024,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return response.content[0].text
+        else:
+            return "Unsupported LLM model for response generation."
+    except Exception as e:
+        return f"An error occurred during LLM generation: {e}"
+
+
+# --- Main RAG Pipeline Execution ---
+def main():
+    """Main function to run the RAG pipeline."""
+    # 1. User prompts for model selection
+    print("Welcome to the RAG Pipeline!")
+
+    # Select Embedding Model
+    supported_embeddings = ['gemini-embedding-001', 'text-embedding-3-small', 'all-MiniLM-L6-v2']
+    print("\nSelect an embedding model:")
+    for i, model in enumerate(supported_embeddings):
+        print(f"  {i + 1}. {model}")
+
+    embedding_choice = int(input("Enter the number of your choice: ")) - 1
+    CONFIG['embedding_model'] = supported_embeddings[embedding_choice]
+    print(f"Selected embedding model: {CONFIG['embedding_model']}")
+
+    # Select LLM
+    supported_llms = ['gpt-4o-mini', 'gemini-1.5-flash', 'llama3.2', 'claude-sonnet-4-20250514']
+    print("\nSelect an LLM:")
+    for i, model in enumerate(supported_llms):
+        print(f"  {i + 1}. {model}")
+
+    llm_choice = int(input("Enter the number of your choice: ")) - 1
+    CONFIG['llm_model'] = supported_llms[llm_choice]
+    print(f"Selected LLM: {CONFIG['llm_model']}")
+
+    # 2. Data Ingestion
+    print("\n--- Starting Data Ingestion ---")
+    documents, ids, metadatas = load_and_prepare_data(CONFIG['max_data_points'])
+
+    # 3. Vector Store Setup and Indexing
+    print("\n--- Setting up Vector Store ---")
+    collection = setup_vector_store()
+
+    # Check if the collection is empty and needs to be populated
+    if collection.count() == 0:
+        print("Collection is empty. Adding documents...")
         collection.add(
-            ids=ids,
             documents=documents,
+            ids=ids,
             metadatas=metadatas
         )
-        logging.info(f"Added {len(documents)} documents to ChromaDB.")
+        print(f"Successfully added {len(documents)} documents to the collection.")
     else:
-        logging.info("ChromaDB already populated. Skipping data insertion.")
+        print(f"Collection already contains {collection.count()} documents. Skipping data ingestion.")
 
+    # 4. Main RAG Loop
+    print("\n--- RAG Pipeline Ready ---")
+    llm_client = get_llm_client(CONFIG['llm_model'])
 
-def retrieve_context(collection, user_query: str, n_results: int = 5) -> List[str]:
-    """
-    Retrieves the most relevant documents from the ChromaDB collection.
-    """
-    results = collection.query(
-        query_texts=[user_query],
-        n_results=n_results
-    )
-    return results['documents'][0] if results['documents'] else []
-
-
-def generate_response(llm_client, llm_model: str, user_query: str, retrieved_context: List[str]) -> str:
-    """
-    Generates a response using the selected LLM and retrieved context.
-    """
-    context_str = "\n".join(retrieved_context)
-    prompt = (
-        f"You are a helpful assistant. Use the following context to answer the user's question. "
-        f"If you don't know the answer, just say you don't have enough information.\n\n"
-        f"Context:\n{context_str}\n\n"
-        f"Question: {user_query}\n\n"
-        f"Answer:"
-    )
-
-    logging.info("Generating response with LLM...")
-
-    if isinstance(llm_client, OpenAI):
-        response = llm_client.chat.completions.create(
-            model=llm_model,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response.choices[0].message.content
-
-    # TODO: Human input required here for Gemini's API call, as there are various ways to call it (e.g., chat vs. generate_content).
-    # For now, we'll use a placeholder.
-    elif isinstance(llm_client, GenerativeModel):
-        response = llm_client.generate_content(prompt)
-        return response.text
-        #return f"# TODO: Gemini API call needs to be implemented. The model {llm_model} was selected. Placeholder prompt: {prompt}"
-
-    elif isinstance(llm_client, OllamaClient):
-        response = llm_client.chat(
-            model=llm_model,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response['message']['content']
-
-    # TODO: Human input required here for Claude's API call, as there are various ways to call it (e.g., with different message formats and system prompts).
-    # For now, we'll use a placeholder.
-    elif isinstance(llm_client, Anthropic):
-        response = llm_client.messages.create(
-            model=llm_model,
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response.content[0].text
-        #return f"# TODO: Claude API call needs to be implemented. The model {llm_model} was selected. Placeholder prompt: {prompt}"
-
-    return "Error: Unsupported LLM client."
-
-
-def main():
-    """
-    Main function to run the RAG pipeline.
-    """
-    # 1-a Disable anonymous usage tracking by ChromaDB
-    os.environ["CHROMA_DISABLE_ANONYMOUS_USAGE_TRACKING"] = "1"  # RRM Code change to disable anonymous usage tracking
-
-    # 1-b Set the path to the config file
-    script_dir = os.path.dirname(os.path.abspath(__file__))  # RRM Code change to set config path relative to script directory
-    config_path = os.path.join(script_dir, 'rag_config_gemini25.json')  # RRM Code change to set config path relative to script directory
-
-    # 1. Load configuration
-    config = load_config(config_path) # RRM Code change: changed config file name from config.jsom to config_path
-
-    # 2. Select embedding model
-    print("Choose an embedding model:")
-    print(f"1. Google ({config['EMBEDDING_MODELS']['GOOGLE']})")
-    print(f"2. OpenAI ({config['EMBEDDING_MODELS']['OPENAI']})")
-    print(f"3. ChromaDB Default ({config['EMBEDDING_MODELS']['CHROMA']})")
-    embed_choice = input("Enter your choice (1, 2, or 3): ")
-
-    if embed_choice == '1':
-        embed_model_name = config["EMBEDDING_MODELS"]["GOOGLE"]
-    elif embed_choice == '2':
-        embed_model_name = config["EMBEDDING_MODELS"]["OPENAI"]
-    elif embed_choice == '3':
-        embed_model_name = config["EMBEDDING_MODELS"]["CHROMA"]
-    else:
-        logging.error("Invalid embedding model choice. Exiting.")
-        return
-
-    # 3. Initialize embedding model and vector store
-    try:
-        embedding_factory = EmbeddingModelFactory(config)
-        embedding_function = embedding_factory.get_embedding_function(embed_model_name)
-        collection = setup_chroma_db(config, embedding_function)
-    except ValueError as e:
-        logging.error(f"Error initializing embedding model or vector store: {e}") # RRM Code change: Added exc_info=True to log the stack trace
-        raise   #return RRM Code change: Changed from return to raise to propagate the exception
-
-    # 4. Load and populate data
-    data = get_data(config)
-    populate_chroma_db(collection, data)
-
-    # 5. Select LLM
-    print("\nChoose an LLM for response generation:")
-    print(f"1. GPT-4o-mini ({config['LLM_PROVIDERS']['GPT']})")
-    print(f"2. Gemini-1.5-flash ({config['LLM_PROVIDERS']['GEMINI']})")
-    print(f"3. LLaMA 3.2 (local via Ollama, {config['LLM_PROVIDERS']['LLAMA']})")
-    print(f"4. Claude Sonnet ({config['LLM_PROVIDERS']['CLAUDE']})")
-    llm_choice = input("Enter your choice (1, 2, 3, or 4): ")
-
-    if llm_choice == '1':
-        llm_model_name = config['LLM_PROVIDERS']['GPT']
-    elif llm_choice == '2':
-        llm_model_name = config['LLM_PROVIDERS']['GEMINI']
-    elif llm_choice == '3':
-        llm_model_name = config['LLM_PROVIDERS']['LLAMA']
-    elif llm_choice == '4':
-        llm_model_name = config['LLM_PROVIDERS']['CLAUDE']
-    else:
-        logging.error("Invalid LLM choice. Exiting.")
-        return
-    logging.info(f"Using LLM model: {llm_model_name}")  # RRM Code change: Added print statement to show selected LLM model
-
-    try:
-        llm_factory = LLMFactory(config)
-        llm_client = llm_factory.get_llm_client(llm_model_name) # RRM Code change: changed parameter from llm_choice to llm_model_name
-    except ValueError as e:
-        logging.error(f"Error initializing LLM client: {e}")
-        raise #return RRM Code change: Changed from return to raise to propagate the exception
-
-    # 6. Main RAG loop
     while True:
         user_query = input("\nEnter your query (or 'quit' to exit): ")
         if user_query.lower() == 'quit':
             break
 
-        # 7. Retrieve context
-        retrieved_context = retrieve_context(collection, user_query)
-        if not retrieved_context:
-            print("No relevant context found. Please try a different query.")
-            continue
+        print("\nRetrieving relevant context...")
+        start_time = time.time()
 
-        # 8. Generate and print response
-        try:
-            response = generate_response(llm_client, llm_model_name, user_query, retrieved_context)
-            print("\n" + "=" * 50)
-            print("Generated Response:")
-            print(response)
-            print("=" * 50)
-        except Exception as e:
-            logging.error(f"Error generating response: {e}", exc_info=True)  # RRM Code change: Added exc_info=True to log the stack trace
+        # ChromaDB handles the embedding of the query internally using the collection's embedding function
+        retrieved_results = collection.query(
+            query_texts=[user_query],
+            n_results=CONFIG['n_results']
+        )
+        retrieval_time = time.time() - start_time
+
+        retrieved_docs = retrieved_results['documents'][0]
+
+        print(f"Retrieved {len(retrieved_docs)} documents in {retrieval_time:.2f} seconds.")
+        print("\n--- Generated Response ---")
+
+        # 5. LLM Generation
+        response = generate_response(llm_client, CONFIG['llm_model'], user_query, retrieved_docs)
+        print(response)
+
+        print("\n--- End of Response ---")
 
 
 if __name__ == "__main__":
