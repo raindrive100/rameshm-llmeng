@@ -1,630 +1,564 @@
 #!/usr/bin/env python3
 """
-RAG Demo (HotpotQA + ChromaDB) — runtime selection WITHOUT saving to config
+RAG over HotpotQA (distractor/train) with pluggable embeddings & LLMs.
 
-- Dataset: hotpot_qa (config="distractor", split="train")
-- Vector store: ChromaDB (persistent), cosine metric (hnsw:space)
-- Embeddings (selected at runtime, loaded from config):
-    * OpenAI: text-embedding-3-small (dimensions via config, <=1024)
-    * Google: gemini-embedding-001 (output_dimensionality via config, <=1024)
-    * Chroma default: all-MiniLM-L6-v2 (fixed dims)
-- LLMs (selected at runtime, loaded from config):
-    * gpt-4o-mini (OpenAI), gemini-1.5-flash (Google), claude-sonnet-4-20250514 (Anthropic),
-      llama3.2 (local via Ollama)
-- NO config writes: user choices affect only the in-memory cfg for this run.
-- Pluggable factories + clear TODOs where specs can vary by SDK/version.
-
-Install (example):
-  pip install --upgrade pip
-  pip install datasets chromadb pyyaml
-  pip install openai anthropic google-generativeai requests
-  pip install sentence-transformers
+- Dataset: hotpot_qa, subset "distractor", split "train"
+- Documents: for each sample, concatenate each context entry as "title[i] : sentences[i]" joined by ", "
+- IDs: use the sample's id field (fallback to _id, then to index if missing)
+- Optional metadata: type, level
+- Vector store: ChromaDB (persisted, cosine similarity)
+- Embeddings: selectable at runtime
+- LLM: selectable at runtime
+- Config externalized to rag_config.yaml (auto-created with defaults if absent)
 """
 
 import os
 import sys
 import json
-import uuid
+import time
 import yaml
-import requests
-from typing import List, Dict, Any, Tuple, Optional
+import math
+import textwrap
+from typing import List, Dict, Any, Optional
 
-# Vector DB
+# Vector store
 import chromadb
-from chromadb.config import Settings
+from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
 
-# Hugging Face datasets
+# Dataset
 from datasets import load_dataset
 
-# Optional embedding function from Chroma (SentenceTransformers)
-from chromadb.utils import embedding_functions
+# Embedding backends
+from sentence_transformers import SentenceTransformer
+from openai import OpenAI
+import google.generativeai as genai
+from anthropic import Anthropic
+import requests
 
-# OpenAI
-try:
-    from openai import OpenAI as OpenAIClient
-except Exception:
-    OpenAIClient = None  # Checked at runtime
-
-# Anthropic (Claude)
-try:
-    import anthropic
-except Exception:
-    anthropic = None  # Checked at runtime
-
-# Google / Gemini
-try:
-    import google.generativeai as genai
-except Exception:
-    genai = None  # Checked at runtime
-
-from abc import ABC, abstractmethod # RRM Code change to import ABC and abstractmethod for defining abstract classes
-from rameshm.llmeng.utils import init_utils # RRM Code change to import init_utils from rameshm.llmeng.utils
-
-# Initialize the logger and sets environment variables
-logger = init_utils.set_environment_logger() # RRM Code change to set logger and environment variables
+from dotenv import load_dotenv  # RRM Code Change: To Load environment variables from .env file
 
 
-# -----------------------------
-# Configuration
-# -----------------------------
+# ---------------------------
+# Config helpers
+# ---------------------------
 
 DEFAULT_CONFIG = {
-    "chromadb": {
-        "persist_directory": "./chroma_rag_store_gpt5Thinking",  # directory for ChromaDB persistence
-        "collection_name": "hotpot_distractor_train",
-        "distance_metric": "cosine",  # sets hnsw:space
-        "batch_size": 256
-    },
     "dataset": {
         "name": "hotpot_qa",
-        "config": "distractor",
+        "subset": "distractor",
         "split": "train",
-        "ingest_limit": 10,  # 1500,  # keep modest for demo speed, RRM Code Change from 1500 to 10
-        "top_k": 5
+        # Limit ingestion for demo speed; raise if you want more docs
+        "ingest_limit": 10,  # Set to 0 for no limit
     },
-    # All supported embedding options live in config. We only read from here.
-    "embedding": {
-        "default_key": "openai",   # used if user selection fails
-        "options": [
-            {
-                "key": "openai",
-                "label": "OpenAI — text-embedding-3-small",
-                "provider": "openai",
-                "model": "text-embedding-3-small",
-                "dimensions": 1024
-            },
-            {
-                "key": "google",
-                "label": "Google Gemini — gemini-embedding-001",
-                "provider": "google",
-                "google_model": "gemini-embedding-001",
-                "dimensions": 1024
-            },
-            {
-                "key": "chroma_default",
-                "label": "Chroma Default — all-MiniLM-L6-v2",
-                "provider": "chroma_default",
-                "chroma_model": "all-MiniLM-L6-v2"
-                # fixed dims (≈384), no 'dimensions' field needed
-            }
-        ]
+    "vectorstore": {
+        "persist_dir": "./chroma_hotpot_qa_gpt5Thinking",  # Directory to persist ChromaDB
+        "collection_name": "hotpotqa_distractor_train_gpt5Thinking",  # Collection name in ChromaDB
+        "metric": "cosine",  # hnsw:space
+        "query_top_k": 5,
+        "batch_size": 64
     },
-    # All supported LLM options live in config. We only read from here.
+    "embeddings": {
+        # Choose max dims when the provider supports it (e.g., OpenAI, Gemini)
+        "max_dimensions": 1024
+    },
     "llms": {
-        "max_output_tokens": 600,
-        "options": [
-            {"key": "gpt-4o-mini", "label": "OpenAI — gpt-4o-mini", "provider": "openai"},
-            {"key": "gemini-1.5-flash", "label": "Google — gemini-1.5-flash", "provider": "google"},
-            {"key": "claude-sonnet-4-20250514", "label": "Anthropic — claude-sonnet-4-20250514", "provider": "anthropic"},
-            {"key": "llama3.2", "label": "Local (Ollama) — llama3.2", "provider": "ollama"}
-        ]
-    },
-    "ollama": {
-        "host": "http://localhost:11434"
+        # Listing provided models exactly as requested; ensure availability in your environment
+        "supported": [
+            {"key": "gpt-4o-mini", "provider": "openai"},
+            {"key": "gemini-1.5-flash", "provider": "google"},
+            {"key": "llama3.2", "provider": "ollama"},
+            {"key": "claude-sonnet-4-20250514", "provider": "anthropic"}
+        ],
+        "system_prompt": (
+            "You are a helpful assistant that answers using only the provided context. "
+            "If the answer is not contained in the context, say you don't know."
+        ),
+        # Safety: truncate context to roughly this many characters in prompt
+        "max_context_chars": 12000
     }
 }
 
 
-def ensure_config(path: str) -> Dict[str, Any]: # RRM Code change to ensure config is loaded from a specified path
-    """Create default config if missing; always return the file content (no writes after)."""
-    if not os.path.exists(path):
-        with open(path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(DEFAULT_CONFIG, f, sort_keys=False)
-        print(f"[INFO] Wrote default config to {path}")
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+def load_or_create_config(path: str = "rag_config.yaml") -> Dict[str, Any]:
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or DEFAULT_CONFIG
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(DEFAULT_CONFIG, f, sort_keys=False)
+    print(f"[info] Created default config at {path}")
+    return DEFAULT_CONFIG
 
 
-# -----------------------------
-# Embedding functions
-# -----------------------------
-
-class EmbeddingFunction():   # Adding ABC to define an abstract base class for embedding functions
-    """Interface expected by Chroma: callable(List[str]) -> List[List[float]]."""
-    #@abstractmethod
-    def __call__(self, input: List[str]) -> List[List[float]]: # RRM Code change to match ChromaDB expected signature (changed input_texts to input)
-        raise NotImplementedError
-
+# ---------------------------
+# Embedding function factory
+# ---------------------------
 
 class OpenAIEmbeddingFn(EmbeddingFunction):
-    """OpenAI embedding function with optional dimensionality control."""
+    """Embeds with OpenAI 'text-embedding-3-small' (or any model you set) with optional dimensionality."""
     def __init__(self, model: str, dimensions: Optional[int] = None, api_key: Optional[str] = None):
-        if OpenAIClient is None:
-            raise RuntimeError("OpenAI SDK not installed. pip install openai")
-        self.client = OpenAIClient(api_key=api_key or os.getenv("OPENAI_API_KEY"))
         self.model = model
         self.dimensions = dimensions
-        print(f"[INFO] Initialized OpenAIEmbeddingFn with model={model}, dimensions={dimensions}")
+        key = api_key or os.getenv("OPENAI_API_KEY")
+        if not key:
+            raise RuntimeError("Missing OPENAI_API_KEY in environment.")
+        self.client = OpenAI(api_key=key)
 
-    #def __call__(self, texts: List[str]) -> List[List[float]]: # RRM Code change to match ChromaDB expected signature (changed input_texts to input)
-    def __call__(self, input: List[str]) -> List[List[float]]:  # RRM Code change to match ChromaDB expected signature (changed input_texts to input)
+    def __call__(self, input: Documents) -> Embeddings:
+        # OpenAI supports batching; here we just call once with the whole list.
+        # If you hit rate/size limits, split into batches.
         resp = self.client.embeddings.create(
             model=self.model,
-            input=input,    # RRM Code changes from texts to input
-            **({"dimensions": self.dimensions} if self.dimensions else {})
+            input=list(input),
+            dimensions=self.dimensions if self.dimensions else None
         )
         return [d.embedding for d in resp.data]
 
 
-class GoogleGeminiEmbeddingFn(EmbeddingFunction):
+class GeminiEmbeddingFn(EmbeddingFunction):
     """
-    Google Gemini embeddings via google-generativeai.
-    - Model: 'gemini-embedding-001'
-    - Dimensionality control: output_dimensionality (e.g., 1024)
+    Embeds with Google 'gemini-embedding-001' with optional output_dimensionality.
+    Note: exact model naming and parameters can vary by SDK version.
     """
-    def __init__(self, model: str, dimensions: Optional[int] = None, api_key: Optional[str] = None):
-        if genai is None:
-            raise RuntimeError("google-generativeai not installed. pip install google-generativeai")
-        genai.configure(api_key=api_key or os.getenv("GOOGLE_API_KEY"))
+    def __init__(self, model: str, output_dimensionality: Optional[int] = None, api_key: Optional[str] = None):
         self.model = model
-        self.dimensions = dimensions
+        self.output_dimensionality = output_dimensionality
+        key = api_key or os.getenv("GOOGLE_API_KEY")
+        if not key:
+            raise RuntimeError("Missing GOOGLE_API_KEY in environment.")
+        genai.configure(api_key=key)
 
-    #def __call__(self, texts: List[str]) -> List[List[float]]:  # RRM Code change to match ChromaDB expected signature (changed input_texts to input)
-    def __call__(self, input: List[str]) -> List[List[float]]:  # RRM Code change to match ChromaDB expected signature (changed input_texts to input)
-        out = []
-        for text in input: # RRM Code change (changed texts to input and t to text)
+    def __call__(self, input: Documents) -> Embeddings:
+        print(f"DELETE THIS PRINT [DEBUG] Embedding {len(input)} texts with Gemini model {self.model}...")   # RRM Code Change: Added print statement to debug
+        print(f"DELETE THIS PRINT [DEBUG] Sample text to embed: {input[0]}...")   # RRM Code Change: Added print statement to debug
+        out: Embeddings = []
+        # Prefer batch API if available; fall back to per-item.
+        # google.generativeai provides batch_embed_contents in some versions.
+        # RRM Code Change: genai.batch_embed_contents is not available in the version I have. Hence switching to genai.embed_content
+        # try:    # RRM Code Change: Using the genai.embed_content method to embed contents
+        #     # Attempt batch call
+        #     # NOTE: The SDK's exact method/args may change; keep a TODO to verify.
+        #     # TODO: Verify the 'task_type' or additional args if required in your environment.
+        #     batch = genai.batch_embed_contents(
+        #         model=self.model,
+        #         requests=[
+        #             {
+        #                 "content": {"parts": [{"text": text}]},
+        #                 "output_dimensionality": self.output_dimensionality
+        #             }
+        #             for text in input
+        #         ]
+        #     )
+        #     for r in batch:
+        #         out.append(r["embedding"])
+        #     return out
+        # except Exception:
+        # Fallback to single-item calls
+        for text in input:
+            # Older/newer SDKs may require "model='models/embedding-001'" or similar.
+            # We pass through self.model exactly as requested by the prompt:
+            # 'gemini-embedding-001'. If your SDK needs a "models/" prefix, add it in config.
             try:
-                resp = genai.embed_content(
-                    model=self.model,              # e.g., "gemini-embedding-001"
-                    content=text,   # RRM Code change (changed t to text)
-                    output_dimensionality=self.dimensions  # when supported
+                r = genai.embed_content(
+                    model=self.model,
+                    content=text,
+                    output_dimensionality=self.output_dimensionality
                 )
-                # SDKs differ slightly in shape; handle common cases:
-                if isinstance(resp, dict) and "embedding" in resp:
-                    out.append(resp["embedding"])   # RRM Code change response is a dict so this line is correct
-                elif hasattr(resp, "embedding"):
-                    out.append(resp.embedding)
-                else:
-                    raise RuntimeError("Unexpected Gemini embedding response format")
+                out.append(r["embedding"])
             except Exception as e:
-                # TODO: Human input required here — verify SDK/model support (may need 'text-embedding-004' etc.)
-                raise RuntimeError(
-                    f"Gemini embedding call failed. Check model/SDK. Original error: {e}"
-                )
+                # If your runtime needs "models/gemini-embedding-001", try that:
+                # This is intentionally a TODO to avoid hallucinating the exact name.
+                # TODO: Human input required here — verify correct Gemini embedding model id for your SDK version.
+                raise
         return out
 
 
-class ChromaSentenceTransformerFn(EmbeddingFunction):
-    """Chroma's SentenceTransformer wrapper (all-MiniLM-L6-v2). Fixed dimension (≈384)."""
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
-        self._fn = embedding_functions.SentenceTransformerEmbeddingFunction(model_name=model_name)
+class STEmbeddingFn(EmbeddingFunction):
+    """Local SentenceTransformer embedding, defaulting to all-MiniLM-L6-v2."""
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2", normalize: bool = True):
+        self.model = SentenceTransformer(model_name)
+        self.normalize = normalize
 
-    def __call__(self, input: List[str]) -> List[List[float]]:  # RRM Code change to match ChromaDB expected signature (changed texts to input)
-        return self._fn(input) # RRM Code change to match ChromaDB expected signature (changed texts to input)
-
-
-def build_embedding_function_from_option(opt: Dict[str, Any]) -> EmbeddingFunction:
-    provider = opt["provider"].lower()
-    logger.info(f"Building embedding function for provider: {provider} (model={opt.get('model')})")
-    if provider == "openai":
-        return OpenAIEmbeddingFn(
-            model=opt["model"],
-            dimensions=opt.get("dimensions"),
-            api_key=os.getenv("OPENAI_API_KEY")
+    def __call__(self, input: Documents) -> Embeddings:
+        vecs = self.model.encode(
+            list(input),
+            show_progress_bar=False,
+            normalize_embeddings=self.normalize
         )
-    elif provider == "google":
-        return GoogleGeminiEmbeddingFn(
-            model=opt["google_model"],
-            dimensions=opt.get("dimensions"),
-            api_key=os.getenv("GOOGLE_API_KEY")
-        )
-    elif provider == "chroma_default":
-        return ChromaSentenceTransformerFn(model_name=opt.get("chroma_model", "all-MiniLM-L6-v2"))
+        return [v.tolist() for v in vecs]
+
+
+def choose_embedding_fn(cfg: Dict[str, Any]) -> EmbeddingFunction:
+    print("\nChoose an embedding model:")
+    choices = [
+        "gemini-embedding-001 (Google)",
+        "text-embedding-3-small (OpenAI)",
+        "all-MiniLM-L6-v2 (local SentenceTransformer)",
+        "Chroma default all-MiniLM-L6-v2 (alias to local ST)"  # aligned to prompt wording
+    ]
+    for i, c in enumerate(choices, 1):
+        print(f"  {i}. {c}")
+    sel = input("Enter 1-4: ").strip()
+    dims = cfg.get("embeddings", {}).get("max_dimensions", 1024)
+
+    if sel == "1":
+        return GeminiEmbeddingFn(model="gemini-embedding-001", output_dimensionality=dims)
+    elif sel == "2":
+        return OpenAIEmbeddingFn(model="text-embedding-3-small", dimensions=dims)
+    elif sel == "3":
+        return STEmbeddingFn(model_name="all-MiniLM-L6-v2")
+    elif sel == "4":
+        # Chroma’s “default” is not guaranteed; we alias to the local ST model for reliability.
+        # This meets the spirit of using all-MiniLM-L6-v2 as the default.
+        return STEmbeddingFn(model_name="all-MiniLM-L6-v2")
     else:
-        # TODO: Human input required here — extend with new providers.
-        raise ValueError(f"Unsupported embedding provider: {provider}")
+        print("[warn] Invalid selection, defaulting to all-MiniLM-L6-v2 (local).")
+        return STEmbeddingFn(model_name="all-MiniLM-L6-v2")
 
 
-def pick_embedding_option(cfg: Dict[str, Any]) -> Dict[str, Any]:
-    """Ask user to pick an embedding option from cfg; return the chosen option dict (no config writes)."""
-    opts = cfg["embedding"]["options"]
-    print("\nSelect an Embedding Provider/Model:")
-    for i, o in enumerate(opts, 1):
-        print(f"  {i}. {o['label']}  [key={o['key']}]")
-    sel = input("Enter the number of the embedding to use: ").strip()
-    try:
-        idx = int(sel) - 1
-        return opts[idx]
-    except Exception:
-        print("[WARN] Invalid selection. Falling back to default.")
-        def_key = cfg["embedding"].get("default_key", opts[0]["key"])
-        return next((o for o in opts if o["key"] == def_key), opts[0])
+# ---------------------------
+# Chroma Collection helpers
+# ---------------------------
 
+def get_chroma_collection(cfg: Dict[str, Any], embedding_fn: EmbeddingFunction):
+    persist_dir = cfg["vectorstore"]["persist_dir"]
+    os.makedirs(persist_dir, exist_ok=True)
+    client = chromadb.PersistentClient(path=persist_dir)
 
-# -----------------------------
-# LLM clients
-# -----------------------------
-
-class LLM:
-    def generate(self, prompt: str, max_tokens: int = 600) -> str:
-        raise NotImplementedError
-
-
-class OpenAILLM(LLM):
-    def __init__(self, model: str, api_key: Optional[str] = None):
-        if OpenAIClient is None:
-            raise RuntimeError("OpenAI SDK not installed. pip install openai")
-        self.client = OpenAIClient(api_key=api_key or os.getenv("OPENAI_API_KEY"))
-        self.model = model
-
-    def generate(self, prompt: str, max_tokens: int = 600) -> str:
-        resp = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that strictly uses the provided context."},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.2,
-            max_tokens=max_tokens,
-        )
-        return resp.choices[0].message.content
-
-
-class GeminiLLM(LLM):
-    def __init__(self, model: str, api_key: Optional[str] = None):
-        if genai is None:
-            raise RuntimeError("google-generativeai not installed. pip install google-generativeai")
-        genai.configure(api_key=api_key or os.getenv("GOOGLE_API_KEY"))
-        self.model = genai.GenerativeModel(model)
-
-    def generate(self, prompt: str, max_tokens: int = 600) -> str:
-        resp = self.model.generate_content(prompt)
-        return resp.text if hasattr(resp, "text") else str(resp)
-
-
-class ClaudeLLM(LLM):
-    def __init__(self, model: str, api_key: Optional[str] = None):
-        if anthropic is None:
-            raise RuntimeError("Anthropic SDK not installed. pip install anthropic")
-        self.client = anthropic.Anthropic(api_key=api_key or os.getenv("CLAUDE_API_KEY"))
-        self.model = model
-
-    def generate(self, prompt: str, max_tokens: int = 600) -> str:
-        msg = self.client.messages.create(
-            model=self.model,
-            max_tokens=max_tokens,
-            temperature=0.2,
-            system="You are a helpful assistant that strictly uses the provided context.",
-            messages=[{"role": "user", "content": prompt}],
-        )
-        try:
-            return "".join(block.text for block in msg.content if hasattr(block, "text"))
-        except Exception:
-            return str(msg)
-
-
-class OllamaLLM(LLM):
-    def __init__(self, model: str, host: str, api_key: Optional[str] = None):
-        self.model = model
-        self.host = host.rstrip("/")
-        self.api_key = api_key or os.getenv("OLLAMA_API_KEY")
-
-    def generate(self, prompt: str, max_tokens: int = 600) -> str:
-        url = f"{self.host}/api/chat"
-        headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": "You are a helpful assistant that strictly uses the provided context."},
-                {"role": "user", "content": prompt},
-            ],
-            "stream": False
-        }
-        r = requests.post(url, headers=headers, json=payload, timeout=120)
-        r.raise_for_status()
-        data = r.json()
-        if isinstance(data, dict):
-            if "message" in data and isinstance(data["message"], dict) and "content" in data["message"]:
-                return data["message"]["content"]
-            if "response" in data:
-                return data["response"]
-        return json.dumps(data, indent=2)
-
-
-def build_llm(model_key: str, cfg: Dict[str, Any]) -> LLM:
-    if model_key == "gpt-4o-mini":
-        return OpenAILLM(model=model_key, api_key=os.getenv("OPENAI_API_KEY"))
-    elif model_key == "gemini-1.5-flash":
-        return GeminiLLM(model=model_key, api_key=os.getenv("GOOGLE_API_KEY"))
-    elif model_key == "claude-sonnet-4-20250514":
-        # TODO: Human input required here — verify this Claude model name is enabled for your account.
-        return ClaudeLLM(model=model_key, api_key=os.getenv("CLAUDE_API_KEY"))
-    elif model_key == "llama3.2":
-        return OllamaLLM(model="llama3.2", host=cfg["ollama"]["host"], api_key=os.getenv("OLLAMA_API_KEY"))
-    else:
-        # TODO: Human input required here — add new LLMs via config + this factory.
-        raise ValueError(f"Unsupported LLM choice: {model_key}")
-
-
-def select_llm_key(cfg: Dict[str, Any]) -> str:
-    opts = cfg["llms"]["options"]
-    print("\nSelect an LLM:")
-    for i, o in enumerate(opts, 1):
-        print(f"  {i}. {o['label']}  [key={o['key']}]")
-    choice = input("Enter the number of the LLM to use: ").strip()
-    try:
-        idx = int(choice) - 1
-        return opts[idx]["key"]
-    except Exception:
-        print("[ERROR] Invalid selection.")
-        sys.exit(1)
-
-
-# -----------------------------
-# Dataset ingestion utilities
-# -----------------------------
-
-def format_context_entry(title: str, sentences: List[str]) -> str:
-    """
-    Format: 'title : sentence0, title : sentence1, ...'
-    (Matches the requested formatting using repeated 'title : sentence' pairs.)
-    """
-    if not sentences:
-        return f"{title} :"
-    return ", ".join([f"{title} : {s}" for s in sentences])
-
-
-def extract_docs_from_example(example: Dict[str, Any]) -> List[Tuple[str, str, Dict[str, Any]]]:
-    """
-    Produce (doc_id, document_text, metadata) per 'context' entry.
-
-    NOTE on IDs:
-    - Requirement says: "Use `id` from `context` for collection.ids".
-      HotpotQA 'context' entries lack their own IDs.
-      # TODO: Human input required here — we synthesize IDs from example 'id' + context index.
-    """
-    out = []
-    example_id = example.get("id", str(uuid.uuid4()))
-    level = example.get("level")
-    ex_type = example.get("type")
-
-    #context = example.get("context", [])   # RRM Code change to use Dict as default
-    context = example.get("context", {})  # RRM Code change to use Dict as default
-    #print(f"[DEBUG] Example ID: {example_id} has title count: {len(context['title'])} Sentences Length: {len(context['sentences'])}") # RRM Code change added print statement to debug titles and sentences length
-    for idx, (title, sentences) in enumerate(zip(context.get("title", []), context.get("sentences", []))):  # RRM Code change to use titles and sentences from example
-    # for idx, item in enumerate(context):  # RRM Code change - Commenting out the original context extraction
-    #     if isinstance(item, (list, tuple)) and len(item) == 2:
-    #         title, sentences = item[0], item[1]
-    #     elif isinstance(item, dict) and "title" in item and "sentences" in item:
-    #         title, sentences = item.get("title"), item.get("sentences")
-    #     else:
-    #         continue
-    #
-    #     title = title if isinstance(title, str) else str(title)
-    #     sentences = [s if isinstance(s, str) else str(s) for s in (sentences or [])]
-    #
-        doc_text = format_context_entry(title, sentences)
-        doc_id = f"{example_id}__ctx_{idx}"  # synthesized
-        metadata = {"level": level, "type": ex_type}
-        out.append((doc_id, doc_text, metadata))
-    #print(f"Processed example {example_id}: extracted {len(out)} documents.")  # RRM Code change to print processed example and extracted documents count
-    return out
-
-
-def ingest_dataset_into_chroma(cfg: Dict[str, Any], collection) -> None:
-    """Load HotpotQA 'distractor/train' and add documents to Chroma (batched)."""
-    ds_cfg = cfg["dataset"]
-    name = ds_cfg["name"]
-    config = ds_cfg["config"]
-    split = ds_cfg["split"]
-    ingest_limit = int(ds_cfg.get("ingest_limit") or 0)
-    batch_size = int(cfg["chromadb"]["batch_size"])
-
-    print(f"[INFO] Loading dataset: {name} / {config} / {split}")
-    dataset = load_dataset(name, config, split=split)
-    total_examples = len(dataset)
-    print(f"[INFO] Dataset loaded with {total_examples} examples")
-
-    to_process = min(ingest_limit, total_examples) if ingest_limit else total_examples
-    print(f"[INFO] Ingesting up to {to_process} examples...")
-    logger.info(f"Ingesting {to_process} documents...")   # RRM Code change to make log entry
-
-    ids, docs, metas = [], [], []
-    count = 0
-
-    for example in dataset.select(range(to_process)):
-        items = extract_docs_from_example(example)
-        #print(f"[INFO] Extracted {len(items)} context entries from example {example.get('id', 'unknown')}")
-        for doc_id, doc_text, meta in items:
-            ids.append(doc_id)
-            docs.append(doc_text)
-            metas.append(meta)
-            count += 1
-
-            if len(ids) >= batch_size:
-                collection.add(ids=ids, documents=docs, metadatas=metas)
-                print(f"[INFO] Added {len(ids)} docs (total so far: {count})")
-                ids, docs, metas = [], [], []
-
-    if ids:
-        collection.add(ids=ids, documents=docs, metadatas=metas)
-        print(f"[INFO] Added final batch into ChromaDB: {len(ids)} docs")
-    print(f"[INFO] Ingestion complete. Total docs added into ChromaDB: {count}")
-    logger.info(f"Ingestion complete. Total docs added into ChromaDB: {count}")   # RRM Code change to make log entry
-
-
-# -----------------------------
-# Chroma helpers
-# -----------------------------
-
-def get_or_create_collection(client, cfg: Dict[str, Any], embedding_fn: EmbeddingFunction):
-    col_name = cfg["chromadb"]["collection_name"]
-    metric = cfg["chromadb"]["distance_metric"]
-    metadata = {"hnsw:space": metric}
-
-    try:    # RRM Code change - Deleting existing collection for demo purposes
+    # RRM Code Change: Delete collection if it exists so that we can create new ones with same name but different embeddings
+    # RRM Code Change: Below try-except block is for demo purposes to ensure a fresh start
+    try:  # RRM Code change - Deleting existing collection for demo purposes
         # If collection exists, delete it for a fresh start (for demo purposes)
-        client.delete_collection(name=col_name)
-        logger.info(f"Deleted existing collection: {col_name}")
+        client.delete_collection(
+            name=cfg['vectorstore']['collection_name'])  # RRM Code change - Deleting existing collection for demo purposes
+        print(
+            f"Deleted existing collection: {cfg['vectorstore']['collection_name']}")  # RRM Code change - Print statement for deleted collection
     except Exception:
         pass  # Collection doesn't exist
 
-    # try:    # RRM Code change - Commenting out existing collection retrieval for demo purposes
-    #     col = client.get_collection(name=col_name, embedding_function=embedding_fn)
-    #     print(f"[INFO] Using existing collection '{col_name}'")
-    #     return col
-    # except Exception:
-    #     pass
-
-    print(f"[INFO] Creating collection '{col_name}' with metric={metric}")
-    return client.create_collection(
-        name=col_name,
-        metadata=metadata,
-        embedding_function=embedding_fn
+    collection = client.get_or_create_collection(
+        name=cfg["vectorstore"]["collection_name"],
+        embedding_function=embedding_fn,
+        metadata={"hnsw:space": cfg["vectorstore"]["metric"]}
     )
-    logger.info(f"Created collection '{col_name}' with metric={metric}")
+    return client, collection
 
 
-def ensure_persistent_client(cfg: Dict[str, Any]):
-    persist_dir = cfg["chromadb"]["persist_directory"]
-    os.makedirs(persist_dir, exist_ok=True)
+# ---------------------------
+# Dataset ingestion & formatting
+# ---------------------------
+
+def format_document_from_sample(sample: Dict[str, Any]) -> str:
+    """
+    Build a single string:
+    "title[0] : sentences[0], title[1] : sentences[1], …"
+    HotpotQA 'context' is typically List[[title, [sentences...]], ...]
+    We flatten sentences[i] by joining its list into a single space-separated string.
+    """
+
+    ctx = sample.get("context", [])
+    parts = []
+    for i, entry in enumerate(ctx):
+        # Entry is often [title, [sent1, sent2, ...]]. Support dict-style too if present.
+        if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+            title = entry[0]
+            sents = entry[1]
+        elif isinstance(entry, dict):
+            title = entry.get("title", f"title[{i}]")
+            sents = entry.get("sentences", [])
+        else:
+            title = f"title[{i}]"
+            sents = []
+
+        if isinstance(sents, list):
+            sent_text = " ".join(sents)
+        else:
+            sent_text = str(sents)
+        parts.append(f"{title} : {sent_text}")
+    return ", ".join(parts)
+
+
+def derive_id(sample: Dict[str, Any], fallback_idx: int) -> str:
+    # Instruction: Use id from 'document' (interpreted here as the sample).
+    # HotpotQA commonly has 'id' or '_id'. We try both, else fallback to index.
+    return str(sample.get("id") or sample.get("_id") or f"hotpot_{fallback_idx}")
+
+
+def optional_metadata(sample: Dict[str, Any]) -> Dict[str, Any]:
+    meta = {}
+    # Optional per instructions:
+    if "type" in sample:
+        meta["type"] = sample["type"]
+    if "level" in sample:
+        meta["level"] = sample["level"]
+    return meta
+
+
+def ingest_dataset(cfg: Dict[str, Any], collection) -> None:
+    ds_name = cfg["dataset"]["name"]
+    subset = cfg["dataset"]["subset"]
+    split = cfg["dataset"]["split"]
+    limit = int(cfg["dataset"].get("ingest_limit", 500))
+    batch_size = int(cfg["vectorstore"].get("batch_size", 64))
+
+    print(f"[info] Loading dataset: {ds_name} / {subset} / {split}")
+    dataset = load_dataset(ds_name, subset, split=split)
+
+    # Quick check: skip if already populated
+    existing_count = 0
     try:
-        return chromadb.PersistentClient(path=persist_dir)
-    except AttributeError:
-        return chromadb.Client(Settings(
-            chroma_db_impl="duckdb+parquet",
-            persist_directory=persist_dir
-        ))
+        # Not all Chroma builds expose count; attempt a cheap query to detect presence.
+        ping = collection.query(query_texts=["ping"], n_results=1)
+        existing_count = len(ping.get("ids", [[]])[0])
+    except Exception:
+        pass
+
+    # A more reliable way is to track our own ingestion marker; for demo we proceed anyway.
+    print(f"[info] Beginning ingestion (limit={limit}, batch={batch_size})")
+    ids, docs, metas = [], [], []
+    added = 0
+
+    docs_processed = 0
+    for idx, sample in enumerate(dataset):
+        if limit and idx >= limit: # RRM Code Change: Stop processing if limit is reached. CHanged from "added < limit" to "idx >= limit"
+            break
+        doc_id = derive_id(sample, idx)
+        #document_text = format_document_from_sample(sample)    # RRM Code Change: Use the new function to format document text
+        meta = optional_metadata(sample)
+
+        ctx_entry = sample.get("context", [])   # RRM Code Change: Use 'context' field directly from sample
+        for ctx_id, (title, sentences) in enumerate(zip(ctx_entry['title'], ctx_entry['sentences']), 1): # RRM Code Change: New Block
+            # RRM Code Change: Use enumerate to get context ID and title/sentences
+            document_text = f"{title} : {' '.join(sentences)}" # RRM Code Change: Use f-string for better readability
+            chroma_id = f"{doc_id}_ctx{ctx_id}" # RRM Code Change: Create a unique ID for each context entry
+            ids.append(chroma_id)
+            docs.append(document_text)
+            metas.append(meta if meta else None)  # Chroma allows None
+
+        # ids.append(doc_id)
+        # docs.append(document_text)
+        # metas.append(meta if meta else None)  # Chroma allows None
+
+        if len(ids) >= batch_size:
+            collection.add(ids=ids, documents=docs, metadatas=metas)
+            added += len(ids)
+            print(f"[ingest] Added {added}/{limit}")
+            ids, docs, metas = [], [], []
+
+    if ids:
+        collection.add(ids=ids, documents=docs, metadatas=metas)
+        added += len(ids)
+        print(f"[ingest] Added {added}/{limit}")
+
+    print("[info] Ingestion complete.")
 
 
-# -----------------------------
-# Retrieval + Prompt
-# -----------------------------
+# ---------------------------
+# Retrieval
+# ---------------------------
 
-def retrieve_context(collection, query: str, top_k: int) -> Dict[str, Any]:
-    """Use Chroma to retrieve top_k docs for the user query."""
-    return collection.query(
+def retrieve_context(cfg: Dict[str, Any], collection, query: str) -> Dict[str, List[str]]:
+    top_k = cfg["vectorstore"]["query_top_k"]
+    res = collection.query(
         query_texts=[query],
         n_results=top_k,
-        include=["documents", "metadatas", "distances"] # RRM Code change: "ids" isn't a supported attribute hence removed.
+        include=["documents", "distances", "metadatas"] # RRM Code Change: "ids" is  not supported in ChromaDB version I have. Removiving it.
+        #include=["documents", "distances", "metadatas", "ids"] # RRM Code Change: "ids" is  not supported in ChromaDB. Removiving it.
     )
+    # Flatten outputs for simplicity
+    out = {
+        #"ids": res.get("ids", [[]])[0], # RRM Code Change: "ids" is actually just a list not list of lists.
+        "ids": res.get("ids", [])[0], # RRM Code Change: "ids" is actually just a list not list of lists.
+        "documents": res.get("documents", [[]])[0],
+        "distances": res.get("distances", [[]])[0],
+        "metadatas": res.get("metadatas", [[]])[0]
+    }
+    return out
 
 
-def build_prompt(user_query: str, retrieved: Dict[str, Any]) -> str:
-    docs = retrieved.get("documents", [[]])[0]
-    ids = retrieved.get("ids", [[]])[0]
-    dists = retrieved.get("distances", [[]])[0]
-    metas = retrieved.get("metadatas", [[]])[0]
+# ---------------------------
+# LLM clients
+# ---------------------------
 
-    ctx_blocks = []
-    for i, doc in enumerate(docs):
-        meta = metas[i] if i < len(metas) and isinstance(metas[i], dict) else {}
-        dist = dists[i] if i < len(dists) else None
-        doc_id = ids[i] if i < len(ids) else f"doc_{i}"
-        ctx_blocks.append(f"[DOC {i+1} | id={doc_id} | distance={dist} | meta={meta}]\n{doc}")
-    context_text = "\n\n".join(ctx_blocks)
-
-    prompt = f"""You are a retrieval-augmented assistant. Use ONLY the context below to answer the user's question.
-If the answer isn't in the context, say you don't have enough information.
-
-# Context
-{context_text}
-
-# Question
-{user_query}
-
-# Instructions
-- Cite the doc ids you used when relevant (e.g., "Based on DOC 2 and DOC 4").
-- Be concise and accurate.
-"""
-    logger.debug(f"Prompt for LLM: {prompt[:500]}... (truncated for debug)")  # RRM Code change to log the prompt
-
-    return prompt   # RRM Code change to return the prompt for LLM generation
+def choose_llm(cfg: Dict[str, Any]) -> Dict[str, str]:
+    print("\nChoose an LLM:")
+    supported = cfg["llms"]["supported"]
+    for i, item in enumerate(supported, 1):
+        print(f"  {i}. {item['key']} ({item['provider']})")
+    sel = input("Enter 1-4: ").strip()
+    try:
+        idx = int(sel) - 1
+        if not (0 <= idx < len(supported)):
+            raise ValueError
+    except Exception:
+        print("[warn] Invalid selection, defaulting to option 1.")
+        idx = 0
+    return supported[idx]
 
 
-# -----------------------------
-# Main flow
-# -----------------------------
+def build_prompt(cfg: Dict[str, Any], user_query: str, retrieved_docs: List[str]) -> str:
+    system = cfg["llms"]["system_prompt"]
+    ctx_joined = "\n\n".join(retrieved_docs)
+    max_chars = cfg["llms"]["max_context_chars"]
+    if len(ctx_joined) > max_chars:
+        ctx_joined = ctx_joined[:max_chars] + "\n[Context truncated]"
+    prompt = (
+        f"{system}\n\n"
+        f"=== Retrieved Context ===\n{ctx_joined}\n\n"
+        f"=== Task ===\n"
+        f"Question: {user_query}\n"
+        f"Answer using ONLY the retrieved context above.\n"
+    )
+    return prompt
+
+
+def call_openai_chat(model: str, prompt: str) -> str:
+    key = os.getenv("OPENAI_API_KEY")
+    if not key:
+        raise RuntimeError("Missing OPENAI_API_KEY in environment.")
+    client = OpenAI(api_key=key)
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return resp.choices[0].message.content
+
+
+def call_gemini_chat(model: str, prompt: str) -> str:
+    key = os.getenv("GOOGLE_API_KEY")
+    if not key:
+        raise RuntimeError("Missing GOOGLE_API_KEY in environment.")
+    genai.configure(api_key=key)
+    # Using GenerativeModel for chat-style generation
+    # NOTE: model naming can vary by SDK version; we pass exactly as chosen.
+    gm = genai.GenerativeModel(model)
+    resp = gm.generate_content(prompt)
+    # In some SDKs, use resp.text; in others, flatten candidates/parts.
+    try:
+        return resp.text
+    except Exception:
+        # TODO: Human input required here — extract text from the response structure for your SDK version.
+        return str(resp)
+
+
+def call_anthropic_chat(model: str, prompt: str) -> str:
+    key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("CLAUDE_API_KEY")
+    if not key:
+        raise RuntimeError("Missing ANTHROPIC_API_KEY (or CLAUDE_API_KEY) in environment.")
+    client = Anthropic(api_key=key)
+    msg = client.messages.create(
+        model=model,
+        max_tokens=800,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    # messages API returns content as a list of blocks; join text blocks.
+    parts = []
+    for block in msg.content:
+        if getattr(block, "type", "") == "text":
+            parts.append(block.text)
+    return "\n".join(parts) if parts else str(msg)
+
+
+def call_ollama_chat(model: str, prompt: str) -> str:
+    url = "http://localhost:11434/api/chat"
+    headers = {"Content-Type": "application/json"}
+    ollama_key = os.getenv("OLLAMA_API_KEY")
+    if ollama_key:
+        headers["Authorization"] = f"Bearer {ollama_key}"
+
+    body = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": False
+    }
+    r = requests.post(url, headers=headers, data=json.dumps(body), timeout=600)
+    r.raise_for_status()
+    data = r.json()
+    # Ollama chat output usually in data["message"]["content"]
+    try:
+        return data["message"]["content"]
+    except Exception:
+        return str(data)
+
+
+def run_llm_choice(choice: Dict[str, str], prompt: str) -> str:
+    model = choice["key"]
+    provider = choice["provider"]
+    if provider == "openai":
+        return call_openai_chat(model, prompt)
+    elif provider == "google":
+        return call_gemini_chat(model, prompt)
+    elif provider == "anthropic":
+        return call_anthropic_chat(model, prompt)
+    elif provider == "ollama":
+        # Assumes local Ollama running and model pulled: `ollama pull llama3.2`
+        return call_ollama_chat(model, prompt)
+    else:
+        # Should not happen with our menu; keep a TODO to avoid hallucination beyond spec.
+        # TODO: Human input required here — unsupported provider selected.
+        raise RuntimeError(f"Unsupported provider: {provider}")
+
+
+# ---------------------------
+# Main
+# ---------------------------
 
 def main():
-    #CONFIG_PATH = "rag_gpt5Thinking_config.yaml"
+    load_dotenv()   # RRM Code Change: Load environment variables from .env file
+
     script_dir = os.path.dirname(os.path.abspath(__file__))  # RRM Code change to set config path relative to script directory
-    config_path = os.path.join(script_dir, 'rag_config_gpt5thinking.yaml')  # RRM Code change to set config path relative to script directory
+    config_path = os.path.join(script_dir, 'rag_example_config_gpt5thinking_ChromaDB.yaml')  # RRM Code change to set config path relative to script directory
+    cfg = load_or_create_config(config_path)  # RRM Code Change: Load config from rag_example_config_gpt5thinking_ChromaDB.yaml
+    #cfg = load_or_create_config()  # RRM Code Change: Load config from rag_example_config_gpt5thinking_ChromaDB.yaml
 
-    cfg = ensure_config(config_path)    # RRM Code change to ensure config is loaded from a specified path
+    # 1) Choose embedding model
+    embedding_fn = choose_embedding_fn(cfg)
 
-    # 1) Embedding selection (no config writes)
-    emb_opt = pick_embedding_option(cfg)
-    embedding_fn = build_embedding_function_from_option(emb_opt)
+    # 2) Init Chroma collection with cosine distance and embedding fn
+    client, collection = get_chroma_collection(cfg, embedding_fn)
 
-    # 2) Persistent Chroma + collection
-    client = ensure_persistent_client(cfg)
-    collection = get_or_create_collection(client, cfg, embedding_fn)
+    # 3) Ingest HotpotQA (if not already)
+    #    For simplicity we ingest up to the configured limit every run; in a real app,
+    #    maintain an ingestion marker to avoid duplicate adds.
+    ingest_dataset(cfg, collection)
 
-    # 3) Ingest dataset if empty
+    # 4) Accept user query
+    print("\nEnter your question (User Query):")
+    user_query = input("> ").strip()
+    if not user_query:
+        print("[error] Empty query. Exiting.")
+        sys.exit(1)
+
+    # 5) Retrieve context from Chroma
+    retrieved = retrieve_context(cfg, collection, user_query)
+    docs = retrieved["documents"]
+    ids = retrieved["ids"]
+    print(f"[info] Retrieved {len(docs)} docs: {ids}")
+
+    # 6) Build prompt
+    prompt = build_prompt(cfg, user_query, docs)
+
+    # 7) Choose LLM and generate answer
+    choice = choose_llm(cfg)
+    print(f"[info] Using LLM: {choice['key']} ({choice['provider']})")
     try:
-        num = collection.count()
+        answer = run_llm_choice(choice, prompt)
+    except Exception as e:
+        print("[error] LLM call failed:", repr(e))
+        # Provide a clear TODO so the user can adjust configuration/environment
+        print("# TODO: Human input required here — verify API keys, model availability, and SDK versions.")
+        sys.exit(2)
+
+    # 8) Display answer
+    print("\n=== Answer ===")
+    print(answer)
+
+    # 9) Optionally persist the DB explicitly (some clients auto-persist)
+    try:
+        client.persist()
     except Exception:
-        num = 0
-    if num == 0:
-        ingest_dataset_into_chroma(cfg, collection)
-        try:
-            client.persist()
-        except Exception:
-            pass
-    else:
-        print(f"[INFO] Collection already has {num} vectors")
-
-    # 4) LLM selection (no config writes)
-    model_key = select_llm_key(cfg)
-    llm = build_llm(model_key, cfg)
-
-    # Interactive query loop
-    print("\n=== Ready for queries ===")
-    print("Type 'quit' to exit")
-
-    while True: # RRM Code change to run in a loop for user queries
-        # 5) User query
-        user_query = input("\nEnter your question: ").strip()
-        if not user_query:
-            print("[ERROR] Empty query.")
-            sys.exit(1)
-        elif user_query.lower() == "quit":
-            print("[INFO] Exiting.")
-            sys.exit(0)
-
-        print("Processing your query...")
-        logger.info(f"User query: {user_query} for LLM: {model_key}")  # RRM Code change to log the user query and LLM model
-
-        # 6) Retrieve + Generate
-        top_k = int(cfg["dataset"]["top_k"])
-        retrieved = retrieve_context(collection, user_query, top_k=top_k)
-        logger.info(f"Retrieved {len(retrieved['documents'][0])} documents/ids/metadatas")  # RRM Code change to log the number of retrieved documents
-        logger.debug(f"Ids Retrieved: {retrieved['ids']}")  # RRM Code change to log the retrieved ids
-        prompt = build_prompt(user_query, retrieved)
-
-        print("\n[INFO] Generating answer...\n")
-        answer = llm.generate(prompt, max_tokens=int(cfg["llms"]["max_output_tokens"]))
-
-        print("\n===== RAG ANSWER =====\n")
-        print(answer)
-        print("\n======================\n")
+        # Some chroma builds persist automatically; ignore if not available.
+        pass
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\n[INFO] Interrupted by user.")
+    main()

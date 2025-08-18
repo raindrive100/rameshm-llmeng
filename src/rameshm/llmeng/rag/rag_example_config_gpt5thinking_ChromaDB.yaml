@@ -1,0 +1,26 @@
+dataset:
+  name: hotpot_qa
+  subset: distractor
+  split: train
+  ingest_limit: 10 # Set to limit dataset size for testing (null = use all). LLM had set it to "null". RRM has set it to 10 for testing.
+vectorstore:
+  persist_dir: ./chroma_hotpot_qa_gpt5Thinking
+  collection_name: hotpotqa_distractor_train_gpt5Thinking
+  metric: cosine
+  query_top_k: 5
+  batch_size: 64
+embeddings:
+  max_dimensions: 1024
+llms:
+  supported:
+  - key: gpt-4o-mini
+    provider: openai
+  - key: gemini-1.5-flash
+    provider: google
+  - key: llama3.2
+    provider: ollama
+  - key: claude-sonnet-4-20250514
+    provider: anthropic
+  system_prompt: You are a helpful assistant that answers using only the provided
+    context. If the answer is not contained in the context, say you don't know.
+  max_context_chars: 12000
