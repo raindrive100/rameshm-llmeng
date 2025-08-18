@@ -29,7 +29,7 @@ class MyLogger:
         self.external_lib_log_level = external_lib_log_level
 
 
-    def get_logger(self, name: str) -> logging.Logger:  # We need to initialize the logger with made it required
+    def get_logger(self, name: str) -> logging.Logger:
         """
         Configure and return a logger with the specified name.
         """
