@@ -1,0 +1,50 @@
+# RAG Pipeline Configuration File
+
+# Dataset configuration
+data:
+  dataset_name: "hotpot_qa"
+  config_name: "distractor"
+  split: "train"
+  ingest_limit: 10  # RRM Code Change: Set to limit dataset size for testing (null or 0 = use all). RRM has set it to 10 for testing.
+
+# ChromaDB configuration
+chromadb:
+  persist_directory: "./chroma_db"
+  collection_name: "hotpot_qa_collection_sonnet"  # RRM Code Change: Changed from "hotpot_qa_collection" to "hotpot_qa_collection_sonnet"
+  distance_metric: "cosine"
+
+# Embedding model configuration
+embedding:
+  dimension_limit: 1024
+
+# LLM configuration
+llm:
+  temperature: 0.7
+  max_tokens: 1000
+
+# Retrieval configuration
+retrieval:
+  n_results: 5  # Number of relevant contexts to retrieve
+
+# Optional: Add future model configurations here
+models:
+  embedding:
+    openai:
+      model_name: "text-embedding-3-small"
+      dimensions: 1024
+    gemini:
+      model_name: "text-embedding-004"
+      output_dimensionality: 1024
+    chromadb_default:
+      model_name: "all-MiniLM-L6-v2"
+
+  llm:
+    openai:
+      model_name: "gpt-4o-mini"
+    gemini:
+      model_name: "gemini-1.5-flash"
+    claude:
+      model_name: "claude-sonnet-4-20250514"
+    llama:
+      model_name: "llama3.2"
+      endpoint: "http://localhost:11434"
