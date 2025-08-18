@@ -1,0 +1,39 @@
+# config.yaml
+
+# --------------------
+# General Settings
+# --------------------
+persist_directory: "./chroma_db"
+collection_name: "hotpot_qa_collection_gemini25"
+data_instance: "distractor"
+data_split: "train"
+# This parameter will be used to limit the number of data points to load for demonstration purposes.
+# Set to a higher number or `null` to load the full dataset.
+max_data_points: 100
+
+# --------------------
+# Embedding Model Settings
+# --------------------
+# 'all-MiniLM-L6-v2' is the built-in default for ChromaDB.
+# Other options: 'gemini-embedding-001', 'text-embedding-3-small'
+embedding_model: 'all-MiniLM-L6-v2'
+# Output dimensionality for embedding models that support it
+embedding_output_dimensionality: 1024
+
+# --------------------
+# LLM Settings
+# --------------------
+# Supported LLMs: 'gpt-4o-mini', 'gemini-1.5-flash', 'llama3.2', 'claude-sonnet-4-20250514'
+llm_model: 'gpt-4o-mini'
+llama_api_base: 'http://localhost:11434/v1'
+
+# --------------------
+# RAG Settings
+# --------------------
+# The number of documents to retrieve from the vector store
+n_results: 5
+
+# ---------------------
+# RRM Code Change: Added a few more parameters for RAG
+# ---------------------
+max_hotpot_qa_docs_to_process: 10
