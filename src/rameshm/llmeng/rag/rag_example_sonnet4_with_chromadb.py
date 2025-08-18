@@ -518,7 +518,7 @@ def main():
 
     # Load configuration
     script_dir = os.path.dirname(os.path.abspath(__file__))  # RRM Code change to set config path relative to script directory
-    config_path = os.path.join(script_dir, 'rag_example_config_sonnet4_ChromaDB.yaml')  # RRM Code change to set config path relative to script directory
+    config_path = os.path.join(script_dir, 'rag_example_config_sonnet4_with_chromadb.yaml')  # RRM Code change to set config path relative to script directory
     config = load_config(config_path)   # RRM Code change to set config path relative to script directory
     #config = load_config()
 

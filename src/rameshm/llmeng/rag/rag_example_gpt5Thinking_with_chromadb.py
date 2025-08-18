@@ -506,9 +506,9 @@ def main():
     load_dotenv()   # RRM Code Change: Load environment variables from .env file
 
     script_dir = os.path.dirname(os.path.abspath(__file__))  # RRM Code change to set config path relative to script directory
-    config_path = os.path.join(script_dir, 'rag_example_config_gpt5thinking_ChromaDB.yaml')  # RRM Code change to set config path relative to script directory
-    cfg = load_or_create_config(config_path)  # RRM Code Change: Load config from rag_example_config_gpt5thinking_ChromaDB.yaml
-    #cfg = load_or_create_config()  # RRM Code Change: Load config from rag_example_config_gpt5thinking_ChromaDB.yaml
+    config_path = os.path.join(script_dir, 'rag_example_config_gpt5thinking_with_chromadb.yaml')  # RRM Code change to set config path relative to script directory
+    cfg = load_or_create_config(config_path)  # RRM Code Change: Load config from rag_example_config_gpt5thinking_with_chromadb.yaml
+    #cfg = load_or_create_config()  # RRM Code Change: Load config from rag_example_config_gpt5thinking_with_chromadb.yaml
 
     # 1) Choose embedding model
     embedding_fn = choose_embedding_fn(cfg)

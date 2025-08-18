@@ -25,7 +25,7 @@ def load_config(config_path: str) -> Dict[str, Any]:
         return yaml.safe_load(file)
 
 script_dir = os.path.dirname(os.path.abspath(__file__)) # RRM Code change to set config path relative to script directory
-config_path = os.path.join(script_dir, 'rag_example_config_gemini25_ChromaDB.yaml') # RRM Code change to set config path relative to script directory
+config_path = os.path.join(script_dir, 'rag_example_config_gemini25_with_chromadb.yaml') # RRM Code change to set config path relative to script directory
 CONFIG = load_config(config_path)   # RRM Code change to load config from YAML file with relative path
 #CONFIG = load_config("config.yaml")
 
