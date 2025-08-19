@@ -53,7 +53,7 @@ def get_embedding_function(model_name: str) -> embedding_functions.EmbeddingFunc
         return embedding_functions.GoogleGenerativeAiEmbeddingFunction(
             api_key=api_key,
             model_name=model_name,
-            output_dimensionality=CONFIG['embedding_output_dimensionality']
+            #output_dimensionality=CONFIG['embedding_output_dimensionality']    # RRM Code Change: output_dimensionality is not a valid parameter
         )
     elif model_name == 'text-embedding-3-small':
         api_key = get_api_key('OpenAI', 'OPENAI_API_KEY')
@@ -195,7 +195,6 @@ def generate_response(llm_client, model_name: str, query: str, context: List[str
     """Generates a response from the LLM using the retrieved context."""
     full_context = "\n\n".join(context)
     prompt = f"Based on the following context, answer the user's query:\n\nContext:\n{full_context}\n\nQuery: {query}\n\nAnswer:"
-    print(f"DELETE THIS PRINT: Sending prompt to {model_name}...: {prompt}")
 
     try:
         if model_name in ['gpt-4o-mini', 'llama3.2']:

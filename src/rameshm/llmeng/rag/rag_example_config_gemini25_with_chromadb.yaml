@@ -25,7 +25,7 @@ embedding_output_dimensionality: 1024
 # --------------------
 # Supported LLMs: 'gpt-4o-mini', 'gemini-1.5-flash', 'llama3.2', 'claude-sonnet-4-20250514'
 llm_model: 'gpt-4o-mini'
-llama_api_base: 'http://localhost:11434/v1'
+llama_api_base: 'http://localhost:11434'  # RRM Code Change: Removed /v1 at end.
 
 # --------------------
 # RAG Settings
