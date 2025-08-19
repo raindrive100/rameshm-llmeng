@@ -15,10 +15,7 @@ RAG over HotpotQA (distractor/train) with pluggable embeddings & LLMs.
 import os
 import sys
 import json
-import time
 import yaml
-import math
-import textwrap
 from typing import List, Dict, Any, Optional
 
 # Vector store

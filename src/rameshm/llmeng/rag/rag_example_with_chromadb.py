@@ -7,10 +7,7 @@ from datasets import load_dataset
 import openai
 import google.generativeai as genai
 import anthropic
-import requests
-
 from dotenv import load_dotenv
-import logging
 from logging_config import MyLogger
 
 logger = None   # Set logger as a global variable.
