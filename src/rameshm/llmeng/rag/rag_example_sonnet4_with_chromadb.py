@@ -512,7 +512,7 @@ def main():
     print("=== RAG Pipeline Demo ===")
 
     # RRM Code change: Load environment variables from .env file
-    load_dotenv()  # Load environment variables from .env file
+    load_dotenv()  # RRM Code change: Load environment variables from .env file
 
     # Load configuration
     script_dir = os.path.dirname(os.path.abspath(__file__))  # RRM Code change to set config path relative to script directory
@@ -600,13 +600,4 @@ def main():
 
 
 if __name__ == "__main__":
-    # Create default config file if it doesn't exist
-    # RRM Code change: The config path is set relative to the script directory in main
-    # config_path = "config.yaml"    # RRM Code change to set config path relative to script directory
-    # if not os.path.exists(config_path):
-    #     default_config = get_default_config()
-    #     with open(config_path, 'w') as f:
-    #         yaml.dump(default_config, f, default_flow_style=False)
-    #     print(f"Created default config file: {config_path}")
-
     main()
