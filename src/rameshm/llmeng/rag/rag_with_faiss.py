@@ -71,6 +71,7 @@ def create_faiss_vector_store(embeddings: List[List[float]]) -> faiss.Index:
     Create a FAISS index from the embeddings and text lookup.
     """
     embedding_dim = len(embeddings[0])
+    print(f"Embedding length: {embedding_dim}")
     vectors = np.array(embeddings).astype("float32")
     index = faiss.IndexFlatL2(embedding_dim)
     index.add(vectors)
