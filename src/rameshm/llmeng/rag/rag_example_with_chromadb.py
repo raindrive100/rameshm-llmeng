@@ -263,7 +263,7 @@ class VectorStore:
         self.collection = self.client.get_or_create_collection(
             name=col_name,
             embedding_function=embedding_function,
-            metadata={"hnsw:space": "cosine"}
+            metadata={"hnsw:space": self.config.vector_store['distance_metric']}
         )
 
 
