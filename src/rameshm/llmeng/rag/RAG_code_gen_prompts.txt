@@ -1,0 +1,53 @@
+<prompt>
+Write complete and executable Python code that demonstrates a functioning Retrieval-Augmented Generation (RAG) pipeline, adhering to the following requirements:
+
+1. **Purpose**: Generate Python code that demonstrates a RAG implementation.
+2. **Deprecated Usage**: Do not use deprecated classes, modules, methods, or functions.
+3. **General Instruction 1**: If a required feature is unsupported or unclear, explicitly insert a placeholder comment such as `# TODO: Human input required here` instead of hallucinating logic.
+4. **General Instruction 2**: Externalize key parameters (e.g., model names, paths, dimensions) into a YAML or JSON config file to allow easy reconfiguration.
+5. **General Instruction 3**: The code should be well-commented, easy to understand, modular, scalable, and maintainable. 
+6. **Data Instruction**: 
+- Use the `hotpot_qa` dataset from Hugging Face. 
+- Use the `distractor` data instance and the “`train` split from “distractor” data instance.
+- Use `id` from `document` for collection.ids list
+- For collection.documents, concatenate the title and sentences fields from each context entry into a single string with title and sentences separated by ‘ : ‘
+- For `collection.documents`, concatenate the `title` and `sentences` fields from each `context` entry into a single string formatted as:  `"title[0] : sentences[0], title[1] : sentences[1]……”` where `title` and `sentence` are python lists in `context`.
+   - (Optional) For `collection.metadatas`, store a dictionary with the `type` and `level` fields from each `document` entry.
+7. **Embedding Model Instructions**:
+   - The `embedding model` for embedding content and `user query` should be configurable to any of the following:
+- `gemini-embedding-001` (Google)
+- `text-embedding-3-small` (OpenAI)
+- The built-in default embedding model all-MiniLM-L6-v2 provided by ChromaDB (if available).
+- Prompt the user on the console to choose from the above predefined 4 `embedding models`
+- The architecture should support future additions of other embedding models in a pluggable way ((e.g., via config updates or an embedding model factory function).
+   - Where the embedding model has an option: Limit embedding dimensions to 1024. For example, in ‘gemini-embedding-001’ it can be set with parameter: `output_dimensionality=1024`
+8. **Vector Store Instructions**:
+- Use `ChromaDB` for storing and retrieving vectors.
+- Persist ChromaDB to disk.
+- Use `cosine similarity` as the distance metric. In ChromaDB this can be set with parameter: hnsw:space metadata key when setting collection in ChromaDB.
+- When creating the ChromaDB collection, pass in the embedding function corresponding to the user-selected embedding model.
+- Use ChromaDB and the selected encoder to retrieve relevant context from the dataset based on the user query.
+
+9. **User Query Instruction**:
+   - Accept “User Query” as input from the user via console.
+
+10. **LLM Instructions**:
+- Prompt the user on the console to choose from a predefined list of supported LLMs:
+     - `gpt-4o-mini` (OpenAI)
+     - `gemini-1.5-flash` (Google)
+     - `llama3.2` (Meta)
+     - `claude-sonnet-4-20250514` (Claude)
+- Retrieve API keys as follows:
+     - OpenAI: `os.getenv('OPENAI_API_KEY')`
+     - Gemini: `os.getenv('GOOGLE_API_KEY')`
+     - Claude: `os.getenv('CLAUDE_API_KEY')`
+     - LLaMA 3.2 (local via Ollama): Use `http://localhost:11434` for the API endpoint, with authentication key set via `os.getenv('OLLAMA_API_KEY')` if required.
+ - Use the following `Key Names` to get the `Keys` for each of the LLMs:
+- os.getenv{‘OPENAI_API_KEY’) for OpenAI
+- os.getenv(‘GOOGLE_API_KEY’) for Gemini
+- os.getenv(‘ANTHROPIC_API_KEY’) for Claude
+- llama3.2 is open source and hosted locally hence set the key if required as “ollama” and use : http://localhost:11434  as the URL. 
+- Support future extensibility via config updates or a factory pattern.
+   - Note: The selected LLM model and embedding model may come from different providers.
+   - Generate a response based on the retrieved context and user query.
+</prompt>
