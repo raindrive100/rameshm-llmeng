@@ -3,23 +3,30 @@ kind: Ingress
 metadata:
   name: llmeng-ingress
   annotations:
-    # Use GCE Ingress controller"
-    spec.ingressClassName: "gce"
-    #kubernetes.io/ingress.class: "gce"
+    kubernetes.io/ingress.class: "gce" # This is actually deprecated but still works. For some reason the newer spec.ingressClassName doesn't always work.
     networking.gke.io/managed-certificates: llmeng-managed-cert # Use the Managed Certificate created in llmeng-certificate.yaml
     kubernetes.io/ingress.allow-http: "false" # Change to "true" if you want to allow HTTP traffic
     beta.cloud.google.com/backend-config: '{"default": "llmeng-backendconfig"}' # Use the BackendConfig created in llmeng-backendconfig.yaml
     #force-redeploy: "true"
 spec:
+  # Use GCE Ingress controller"
+  #ingressClassName: "gce"  # This should work but for somereason isn't working for me.
   rules:
   - host: rameshmullangi.com # Replace with domain or nip.io address
     http:
     # - your-domain.com # Uncomment and set your domain if you have one
       paths:
-      - path: /llmchat # Route all traffic to the root path
-        pathType: Prefix
-        backend:
-          service:
-            name: llmchat-service # Name of your LLMChat Service
-            port:
-              number: 7861 # This is the port on which the LLMChat Service defined in llmeng-service.yaml listens (ports.port entry)
+        - path: / # Route all traffic to the root path
+          pathType: Prefix
+          backend:
+            service:
+              name: llmchat-service # Name of your LLMChat Service
+              port:
+                number: 7861 # This is the port on which the LLMChat Service defined in llmeng-service.yaml listens (ports.port entry)
+        - path: /llmchat # Route all traffic to the root path
+          pathType: Prefix
+          backend:
+            service:
+              name: llmchat-service # Name of your LLMChat Service
+              port:
+                number: 7861 # This is the port on which the LLMChat Service defined in llmeng-service.yaml listens (ports.port entry)
