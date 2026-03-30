@@ -61,11 +61,11 @@ Demonstrates the effectiveness of LLMs in **code generation**.
 > - Implements an **ephemeral context cache** (non-persistent).
 
 **Key Modules:**
-> - `Chat_constants.py` – Contains shared constants.  
-> - `File_handler_llm.py` – File handlers for text, PDF, Word, Excel, etc.  
+> - `chat_constants.py` – Contains shared constants.  
+> - `file_handler_llm.py` – File handlers for text, PDF, Word, Excel, etc.  
 >  *(A factory pattern could improve this design, but it’s sufficient for this exercise.)*  
-> - `Gr_event_handler.py` – All event-handling logic for the Gradio app.  
-> - `Gr_ui.py` – The Gradio user interface.  
+> - `gr_event_handler.py` – All event-handling logic for the Gradio app.  
+> - `gr_ui.py` – The Gradio user interface.  
   *Recommended entry point to understand overall application flow.*
 
 ##### **misc/**

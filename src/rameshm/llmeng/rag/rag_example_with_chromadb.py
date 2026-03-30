@@ -124,7 +124,7 @@ class GoogleEmbeddingProvider(EmbeddingProvider):
             raise ValueError("GOOGLE_API_KEY not set")
         return GoogleEmbeddingFunction(
             api_key=api_key,
-            model_name="models/embedding-001",
+            model_name="models/gemini-embedding-001",
             dimensions=config.embedding["dimensions"]
         )
 
