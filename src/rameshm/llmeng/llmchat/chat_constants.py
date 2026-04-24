@@ -26,7 +26,7 @@ TEXT_FILE_EXTENSIONS = ['.txt', '.md', '.py', '.js', '.html', '.css', '.json',
 
 SUPPORTED_FILE_TYPES = {
     "text": TEXT_FILE_EXTENSIONS,
-    "image": ['image', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.svg'],
+    "image": ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.svg'],
     "pdf": ['.pdf'],
     "ms-wordx": ['.docx'],
     "ms-excelx": ['.xlsx']
