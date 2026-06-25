@@ -10,7 +10,7 @@ spec:
     #topology.kubernetes.io/zone: us-east4-a # <--- Add this
   selector:
     matchLabels:
-      app: llmchat-pod # Match the label of the pods
+      app: llmchat-pod # Match the label of the pods to know which pods belong to this deployment
   revisionHistoryLimit: 5
   strategy:
     type: RollingUpdate
